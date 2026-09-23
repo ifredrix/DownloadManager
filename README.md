@@ -28,15 +28,16 @@ Syarat: Windows + .NET 8 SDK.
 
 ## Pembaruan mandiri
 
-Menu **Help → Check for updates...** membaca manifest dari URL berikut
-(dapat diubah di dialog):
+Menu **Help → Check for updates...** membaca manifest berikut (dapat diubah
+di dialog):
 
 ```
-https://api.github.com/repos/ifredrix/DownloadManager/releases/latest
+https://raw.githubusercontent.com/ifredrix/DownloadManager/main/update/latest.json
 ```
 
-Manifest juga bisa berupa JSON generik: `{"version","url","sha256","notes"}`.
-Paket yang diunduh diverifikasi SHA256-nya sebelum dijalankan.
+Manifest berisi `{"version","url","sha256","notes"}`; parser GitHub Releases API
+(`https://api.github.com/repos/.../releases/latest`) juga didukung, tetapi tanpa
+field SHA256. Paket yang diunduh diverifikasi SHA256-nya sebelum dijalankan.
 
 ## Catatan
 
