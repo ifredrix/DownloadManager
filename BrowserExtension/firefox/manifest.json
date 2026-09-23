@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "ifredrix Download Manager",
+  "version": "1.1",
+  "description": "Send download links from Firefox to ifredrix Download Manager. Right-click any link, video or audio and choose 'Send to ifredrix', or use the download panel over videos.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "ifredrix-download-manager@local"
+    }
+  },
+  "permissions": ["contextMenus", "storage", "menus"],
+  "host_permissions": ["http://127.0.0.1:8795/*", "http://127.0.0.1:8796/*", "http://127.0.0.1:8797/*", "http://127.0.0.1:8798/*", "http://localhost:8795/*", "http://localhost:8796/*", "http://localhost:8797/*", "http://localhost:8798/*"],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ifredrix Download Manager"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["panel.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}
