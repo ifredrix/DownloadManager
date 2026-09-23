@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Per-user MSI (no admin): files -> %LocalAppData%\Programs\ifredrixDownloadManager,
+  Start Menu + Desktop shortcuts, Add/Remove Programs entry.
+
+  Deliberately NOT touched by the MSI:
+    - .torrent association and autostart: both are handled inside the app
+      (menu "Associate .torrent files", Settings "start with Windows"),
+      so uninstalling never leaves stray HKCU state behind.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="ifredrix Download Manager"
+           Manufacturer="ifredrix"
+           Version="1.0.0"
+           UpgradeCode="A7C2E9D4-5B31-4F8E-9C60-2D1E84F30B75"
+           Scope="perUser"
+           Compressed="yes">
+    <SummaryInformation Description="ifredrix Download Manager - multi-connection download manager" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of ifredrix Download Manager is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="AppIcon.ico" SourceFile="app.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="Programs\ifredrixDownloadManager" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut" Guid="D4B61F02-7C55-4A3E-B0E9-9A2F3C81D6A4">
+        <Shortcut Id="StartMenuShortcut"
+                  Name="ifredrix Download Manager"
+                  Description="ifredrix Download Manager"
+                  Target="[INSTALLFOLDER]ifredrixDownloadManager.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="AppIcon.ico" />
+        <RemoveFolder Id="RemoveStartMenu" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\ifredrixDownloadManager"
+                       Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="DesktopShortcut" Guid="6E0A49C7-1D38-4B6F-8A21-C57B9E0F3B12">
+        <Shortcut Id="DesktopIcon"
+                  Name="ifredrix Download Manager"
+                  Description="ifredrix Download Manager"
+                  Target="[INSTALLFOLDER]ifredrixDownloadManager.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="AppIcon.ico" />
+        <RegistryValue Root="HKCU" Key="Software\ifredrixDownloadManager"
+                       Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="ifredrix Download Manager" Level="1">
+      <!-- All published files, harvested recursively from the bind path "pub". -->
+      <Files Include="!(bindpath.pub)\**" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+  </Package>
+</Wix>

@@ -6,3 +6,5 @@ obj/
 *.cache
 workbuddy-local/
 .workbuddy-ai/
+installer/*.msi
+installer/*.wixpdb
