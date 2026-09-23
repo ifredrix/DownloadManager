@@ -39,6 +39,10 @@ Manifest berisi `{"version","url","sha256","notes"}`; parser GitHub Releases API
 (`https://api.github.com/repos/.../releases/latest`) juga didukung, tetapi tanpa
 field SHA256. Paket yang diunduh diverifikasi SHA256-nya sebelum dijalankan.
 
+## Lisensi
+
+MIT License — Copyright (c) 2026 Frederikus Hendra Tingang. Lihat [LICENSE](LICENSE).
+
 ## Catatan
 
 - Ekstensi browser dipasang manual (aturan keamanan browser).
