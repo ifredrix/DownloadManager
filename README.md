@@ -16,7 +16,20 @@ Inggris.
 - Perencana jadwal, batas kecepatan global & per-unduhan, auto-shutdown
 - Ekspor/impor antrean, riwayat persisten, verifikasi checksum (SHA256/SHA1/MD5)
 - Tema Light/Dark + 4 aksen, kolom & toolbar dapat dikustom, UI Indonesia/English
-- Asosiasi `.torrent`, pemasang Windows (`installer/`), pola pengecualian URL
+- Asosiasi `.torrent`, pola pengecualian URL, ekstensi browser (Chrome, Edge,
+  Opera, Brave, Vivaldi, Firefox)
+
+## Instalasi
+
+Unduh dari [Releases](https://github.com/ifredrix/DownloadManager/releases):
+
+- **`.msi`** (disarankan) — pemasang Windows per-user, tanpa admin; pasang lalu
+  jalankan dari Start Menu / desktop.
+- **`.zip`** — ekstrak, lalu jalankan `ifredrixDownloadManager.exe`
+  (self-contained, tanpa perlu .NET terpasang).
+- `installer/Install.ps1` tetap tersedia sebagai alternatif baris perintah.
+
+Verifikasi unduhan dengan `SHA256SUMS.txt` pada rilis yang sama.
 
 ## Build
 

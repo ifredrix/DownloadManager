@@ -18,6 +18,17 @@
     <PackageReference Include="MonoTorrent" Version="3.0.2" />
   </ItemGroup>
 
+  <!--
+    Browser extensions are plain files the user loads unpacked; they must ship
+    next to the exe or the integration dialog points at a missing folder.
+  -->
+  <ItemGroup>
+    <Content Include="BrowserExtension\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
   <!-- The WPF try-out shell lives in Wpf/ with its own project. -->
   <ItemGroup>
     <Compile Remove="Wpf\**" />

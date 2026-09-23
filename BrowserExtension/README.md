@@ -37,7 +37,8 @@ URLs to the internet.
 * **Video panel** (`panel.js` content script) watches for `<video>`
   elements — including ones added later by the page — and overlays a
   download button. Direct media URLs queue as HTTP downloads; stream pages
-  queue as background best-MP4 via the bundled `yt-dlp` + `ffmpeg`.
+  queue as background best-MP4 via `yt-dlp` + `ffmpeg` (fetched once into
+  the app's tools folder on the first stream download).
 * **On context-menu** the extension sends the URL to the desktop app
   (`POST /capture`), which auto-queues it: regular files as HTTP downloads,
   `.torrent`/magnet as torrents, streaming sites as background best-MP4 via `yt-dlp`.
