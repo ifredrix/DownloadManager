@@ -1,6 +1,6 @@
 {
   "version": "0.1.0-beta",
   "url": "https://sourceforge.net/projects/SLUG-PLACEHOLDER/files/ifredrixDownloadManager-0.1.0-beta-x64.msi/download",
-  "sha256": "c47c1beddf5d515516039ff9a6e43c6ff12e808b9a54744edd38f3067f4c6917",
-  "notes": "ifredrix Download Manager 0.1.0-beta - Tor dialog layout fix, independent progress window, yt-dlp via Tor (socks5h) for route-all, MIT installer. URL is a placeholder until the SourceForge slug is registered."
+  "sha256": "6ec53ceace0aaa61efb6d218cae3db182043032b1a1953536c22a05dd5018268",
+  "notes": "ifredrix Download Manager 0.1.0-beta - shadow-DOM video button (archive.org), friendly DRM message, per-task Tor toggle honored for streams, MIT installer. URL is a placeholder until the SourceForge slug is registered."
 }

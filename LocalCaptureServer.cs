@@ -251,13 +251,27 @@ public sealed class LocalCaptureServer : IDisposable
         }
         catch (Exception ex)
         {
-            await WriteTextAsync(ctx, 502, "failed: " + ex.Message).ConfigureAwait(false);
+            await WriteTextAsync(ctx, 502, "failed: " + FriendlyFormatsError(ex.Message)).ConfigureAwait(false);
             return;
         }
 
         _heartbeats[source] = DateTime.UtcNow;
         var json = JsonSerializer.Serialize(new { ok = true, formats = choices }, JsonOutOpts);
         await WriteTextAsync(ctx, 200, json, "application/json").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Raw yt-dlp dumps embed huge signed URLs and English-only jargon.
+    /// DRM is the common dead end (studio-licensed segments no tool may
+    /// fetch): say so plainly, in both UI languages, instead of the dump.
+    /// </summary>
+    private static string FriendlyFormatsError(string message)
+    {
+        if (message.Contains("DRM protected", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Video ini terproteksi DRM (lisensi studio) sehingga tidak bisa diunduh tool apapun. / This video is DRM-protected (studio license) and cannot be downloaded by any tool.";
+        }
+        return message;
     }
 
     private async Task HandleCaptureAsync(HttpListenerContext ctx, string source)

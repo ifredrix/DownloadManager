@@ -140,11 +140,14 @@ public sealed class DownloadManager : IDisposable
     /// (route-all + non-local host): socks5h keeps DNS resolution on the
     /// Tor exit, bypassing local DNS blocks. Empty = direct connection.
     /// </summary>
-    private string TorProxyFor(string url)
+    private string TorProxyFor(string url, bool forceTor)
     {
-        if (!RouteAllViaTor) return string.Empty;
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return string.Empty;
-        if (TorProxy.IsLocalUrl(uri)) return string.Empty;
+        if (!forceTor)
+        {
+            if (!RouteAllViaTor) return string.Empty;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return string.Empty;
+            if (TorProxy.IsLocalUrl(uri)) return string.Empty;
+        }
         return $"socks5h://{TorProxy.Host}:{TorProxy.Port}";
     }
 
@@ -471,7 +474,7 @@ public sealed class DownloadManager : IDisposable
 
         var trimmed = url.Trim();
         return _streams.ListChoicesAsync(
-            trimmed, ct, referer, ua, cookies, TorProxyFor(trimmed));
+            trimmed, ct, referer, ua, cookies, TorProxyFor(trimmed, false));
     }
 
     /// <summary>
@@ -881,7 +884,7 @@ public sealed class DownloadManager : IDisposable
         Directory.CreateDirectory(task.SavePath);
 
         // Best-effort title so the row shows something meaningful.
-        var proxy = TorProxyFor(task.Url);
+        var proxy = TorProxyFor(task.Url, task.UseTor);
         try
         {
             var title = await _streams.GetTitleAsync(

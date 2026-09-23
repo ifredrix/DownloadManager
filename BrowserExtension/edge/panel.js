@@ -309,6 +309,30 @@
 
     const buttons = new Map(); // video -> button
 
+    // archive.org and other Lit/polymer players render <video> inside open
+    // shadow roots, which document.querySelectorAll("video") never sees.
+    // Walk those roots (plus same-origin iframes) so the button shows up
+    // there too.
+    function allVideos() {
+        const out = [];
+        const walk = (root) => {
+            if (!root || !root.querySelectorAll) return;
+            root.querySelectorAll("video").forEach((v) => out.push(v));
+            const all = root.querySelectorAll("*");
+            for (let i = 0; i < all.length; i++) {
+                const sr = all[i].shadowRoot;
+                if (sr) walk(sr);
+            }
+        };
+        walk(document);
+        try {
+            document.querySelectorAll("iframe").forEach((f) => {
+                try { if (f.contentDocument) walk(f.contentDocument); } catch (_) { /* cross-origin */ }
+            });
+        } catch (_) { /* ignore */ }
+        return out;
+    }
+
     function makeButton(video) {
         const btn = document.createElement("button");
         btn.id = "ifredrix-panel-button";
@@ -333,7 +357,11 @@
     }
 
     function refresh() {
-        document.querySelectorAll("video").forEach((video) => {
+        // Hide buttons whose video left the DOM (SPA theater swaps).
+        buttons.forEach((btn, video) => {
+            if (!video.isConnected) btn.style.display = "none";
+        });
+        allVideos().forEach((video) => {
             const btn = buttons.get(video) || makeButton(video);
             const r = video.getBoundingClientRect();
             const visible = r.width >= 120 && r.height >= 60 &&
@@ -350,7 +378,14 @@
         });
     }
 
-    new MutationObserver(refresh).observe(document.documentElement, {
+    // Mutation storms (Lit re-renders) must not run the shadow-DOM walk
+    // synchronously on every batch: debounce, the interval below covers it.
+    let refreshTimer = 0;
+    const scheduleRefresh = () => {
+        if (refreshTimer) return;
+        refreshTimer = setTimeout(() => { refreshTimer = 0; refresh(); }, 600);
+    };
+    new MutationObserver(scheduleRefresh).observe(document.documentElement, {
         childList: true, subtree: true
     });
     addEventListener("scroll", refresh, { passive: true, capture: true });
