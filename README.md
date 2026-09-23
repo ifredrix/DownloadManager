@@ -8,6 +8,9 @@ Inggris.
 ## Fitur utama
 
 - Antrean unduh multi-koneksi (segmentasi dinamis, HTTP/2, resume, retry)
+- Autodownload dari browser apa pun (Chrome, Edge, Opera, Brave, Vivaldi,
+  Firefox): klik unduhan diambil alih aplikasi; bila aplikasi tertutup,
+  unduhan tetap berjalan di browser
 - Tangkap tautan otomatis dari clipboard (URL biasa, `magnet:`, `.torrent`, YouTube/HLS)
 - Torrent & stream (yt-dlp + ffmpeg, auto-fetch sekali saat dibutuhkan)
 - Proxy (None/System/Custom + auth), cookie, login situs per-host (Basic auth)

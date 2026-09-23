@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "ifredrix Download Manager",
-  "version": "1.1",
-  "description": "Send download links from Chrome to ifredrix Download Manager. Right-click any link, video or audio and choose 'Send to ifredrix', or use the download panel over videos.",
-  "permissions": ["contextMenus", "storage"],
+  "version": "1.2",
+  "description": "Autodownload with ifredrix Download Manager: every link you click is taken over by the app automatically, plus right-click any link, video or audio and choose 'Send to ifredrix', or use the download panel over videos.",
+  "permissions": ["contextMenus", "storage", "downloads"],
   "host_permissions": ["http://127.0.0.1:8795/*", "http://127.0.0.1:8796/*", "http://127.0.0.1:8797/*", "http://127.0.0.1:8798/*", "http://localhost:8795/*", "http://localhost:8796/*", "http://localhost:8797/*", "http://localhost:8798/*"],
   "background": {
     "service_worker": "background.js"

@@ -32,6 +32,13 @@ URLs to the internet.
 
 ## How it works
 
+* **Autodownload** — every http(s) download you start in the browser is
+  paused, handed to the desktop app, and canceled in the browser once the
+  app accepts it (verified SHA-side by the app itself). If the app is
+  closed, the URL matches an exclusion pattern, or the app rejects the
+  link, the download is resumed in the browser, so nothing is ever lost.
+  Duplicates of a link that is already queued are recognized and answered
+  idempotently (no double file).
 * **On startup** the extension sends a heartbeat (`GET /heartbeat?source=…`)
   to the desktop app and then once every 10 seconds.
 * **Video panel** (`panel.js` content script) watches for `<video>`

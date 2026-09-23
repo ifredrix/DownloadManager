@@ -238,6 +238,20 @@ public sealed class LocalCaptureServer : IDisposable
             return;
         }
 
+        // Same URL already active in the app -> answer OK idempotently so the
+        // browser side cancels its copy instead of downloading a duplicate.
+        var alreadyActive = _manager.GetAllTasks().Any(t =>
+            string.Equals(t.Url, payload.Url, StringComparison.OrdinalIgnoreCase) &&
+            t.Status is DownloadStatus.Pending or DownloadStatus.Queued or
+                DownloadStatus.Downloading or DownloadStatus.Paused);
+        if (alreadyActive)
+        {
+            _heartbeats[source] = DateTime.UtcNow;
+            LinkCaptured?.Invoke(this, new CapturedLink(payload.Url, source));
+            await WriteTextAsync(ctx, 200, "queued").ConfigureAwait(false);
+            return;
+        }
+
         _heartbeats[source] = DateTime.UtcNow;
 
         string? failure = null;
