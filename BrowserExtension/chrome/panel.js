@@ -233,7 +233,7 @@
 
     function sendChoice(url, format, row) {
         row.classList.add("ifre-busy");
-        sendMessage({ type: "ifre-capture", url: url, format: format || "", referer: location.href })
+        sendMessage({ type: "ifre-capture", url: url, format: format || "", referer: location.href, ui: true })
             .then((resp) => {
                 if (resp && resp.ok) {
                     row.classList.add("ifre-ok");

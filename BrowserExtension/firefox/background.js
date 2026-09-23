@@ -79,11 +79,11 @@ async function pageContext(referer, mediaUrl) {
 // Offline / excluded / rejected all return false so callers can fall back
 // to letting the browser handle the download itself. `format` is the yt-dlp
 // selector picked in the quality list ("" = automatic best).
-async function send(url, format, referer) {
+async function send(url, format, referer, ui) {
     const ctx = await pageContext(referer || "", url);
     const payload = JSON.stringify({
         url: url, source: SOURCE, format: format || "",
-        referer: referer || "", ua: ctx.ua, cookies: ctx.cookies
+        referer: referer || "", ua: ctx.ua, cookies: ctx.cookies, ui: !!ui
     });
     const targets = [base];
     const found = await discover();
@@ -169,7 +169,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     if (msg.type === "ifre-capture" && msg.url) {
-        send(msg.url, msg.format, msg.referer)
+        send(msg.url, msg.format, msg.referer, msg.ui)
             .then((ok) => { try { sendResponse({ ok: ok }); } catch (_) { } })
             .catch(() => { try { sendResponse({ ok: false }); } catch (_) { } });
         return true;

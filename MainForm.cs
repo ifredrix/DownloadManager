@@ -1782,15 +1782,23 @@ public partial class MainForm : Form
     /// </summary>
     private void OpenProgress()
     {
-        if (_selectedTask == null || _downloadManager == null) return;
-        if (_progressWindows.TryGetValue(_selectedTask.Id, out var existing) && !existing.IsDisposed)
+        if (_selectedTask == null) return;
+        OpenProgress(_selectedTask);
+    }
+
+    /// <summary>Opens (or focuses) the progress window for a given task.</summary>
+    private void OpenProgress(DownloadTask task)
+    {
+        if (_downloadManager == null) return;
+        if (_progressWindows.TryGetValue(task.Id, out var existing) && !existing.IsDisposed)
         {
             existing.Focus();
             return;
         }
-        var window = new ProgressForm(_downloadManager, _selectedTask.Id);
-        window.FormClosed += (_, _) => _progressWindows.Remove(_selectedTask.Id);
-        _progressWindows[_selectedTask.Id] = window;
+        var window = new ProgressForm(_downloadManager, task.Id);
+        var id = task.Id;
+        window.FormClosed += (_, _) => _progressWindows.Remove(id);
+        _progressWindows[task.Id] = window;
         window.Show();
     }
 
@@ -2214,7 +2222,26 @@ public partial class MainForm : Form
         Ui(() =>
         {
             SetStatus(string.Format(T("notify.captured"), link.Source, link.Url));
-            Notify(T("notify.capture"), $"{link.Source} -> {link.Url}");
+            if (!link.Ui)
+            {
+                Notify(T("notify.capture"), $"{link.Source} -> {link.Url}");
+                return;
+            }
+            // Picked in the browser panel: pop the progress window for it
+            // (the window itself is the confirmation). Silent handoffs
+            // keep the toast-only behaviour above.
+            DownloadTask? found = null;
+            var all = _downloadManager?.GetAllTasks();
+            if (all != null)
+            {
+                foreach (var t in all)
+                {
+                    if (!string.Equals(t.Url, link.Url, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (found == null || t.CreatedAt > found.CreatedAt) found = t;
+                }
+            }
+            if (found != null) OpenProgress(found);
+            else Notify(T("notify.capture"), $"{link.Source} -> {link.Url}");
         });
     }
 

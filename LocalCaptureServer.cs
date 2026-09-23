@@ -208,7 +208,7 @@ public sealed class LocalCaptureServer : IDisposable
 
         if (failure == null)
         {
-            LinkCaptured?.Invoke(this, new CapturedLink(saved, source));
+            LinkCaptured?.Invoke(this, new CapturedLink(saved, source, false));
             await WriteTextAsync(ctx, 200, "queued").ConfigureAwait(false);
         }
         else
@@ -316,7 +316,7 @@ public sealed class LocalCaptureServer : IDisposable
         if (alreadyActive)
         {
             _heartbeats[source] = DateTime.UtcNow;
-            LinkCaptured?.Invoke(this, new CapturedLink(payload.Url, source));
+            LinkCaptured?.Invoke(this, new CapturedLink(payload.Url, source, payload.Ui));
             await WriteTextAsync(ctx, 200, "queued").ConfigureAwait(false);
             return;
         }
@@ -358,7 +358,7 @@ public sealed class LocalCaptureServer : IDisposable
 
         if (failure == null)
         {
-            LinkCaptured?.Invoke(this, new CapturedLink(payload.Url, source));
+            LinkCaptured?.Invoke(this, new CapturedLink(payload.Url, source, payload.Ui));
             await WriteTextAsync(ctx, 200, "queued").ConfigureAwait(false);
         }
         else
@@ -415,15 +415,23 @@ public sealed class LocalCaptureServer : IDisposable
 
         [JsonPropertyName("cookies")]
         public List<CookieEntry>? Cookies { get; set; }
+
+        // True when the user picked this row in the in-page panel (as
+        // opposed to a silent autodownload/context-menu handoff): the app
+        // should pop the progress window, not just a toast. Optional:
+        // older extensions omit it (= toast only, old behaviour).
+        [JsonPropertyName("ui")]
+        public bool Ui { get; set; }
     }
 
     public sealed class CapturedLink
     {
-        public CapturedLink(string url, string source)
+        public CapturedLink(string url, string source, bool ui)
         {
-            Url = url; Source = source;
+            Url = url; Source = source; Ui = ui;
         }
         public string Url { get; }
         public string Source { get; }
+        public bool Ui { get; }
     }
 }
