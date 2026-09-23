@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Text.Json.Serialization;
 using System.Threading;
 
 namespace IfredrixDownloadManager;
@@ -20,6 +22,24 @@ public enum DownloadType
     Regular,
     Torrent,
     Stream
+}
+
+/// <summary>
+/// One cookie the extension harvested for the page/media host. It travels
+/// extension -&gt; local app -&gt; origin only (as a host-matched header or a
+/// temporary Netscape jar that yt-dlp deletes after the call); the app never
+/// writes cookies to history.json or any other file.
+/// </summary>
+public sealed class CookieEntry
+{
+    [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+    [JsonPropertyName("value")] public string Value { get; set; } = string.Empty;
+    [JsonPropertyName("domain")] public string Domain { get; set; } = string.Empty;
+    [JsonPropertyName("path")] public string Path { get; set; } = "/";
+    [JsonPropertyName("hostOnly")] public bool HostOnly { get; set; }
+    [JsonPropertyName("secure")] public bool Secure { get; set; }
+    /// <summary>Unix seconds; 0 = session cookie.</summary>
+    [JsonPropertyName("expires")] public double Expires { get; set; }
 }
 
 /// <summary>One transfer segment/connection snapshot for the progress window.</summary>
@@ -54,6 +74,8 @@ public class DownloadTask : INotifyPropertyChanged
     private bool _supportsRange;
     private string _formatId = string.Empty;
     private string _referer = string.Empty;
+    private string _ua = string.Empty;
+    private List<CookieEntry>? _cookies;
 
     public DownloadTask()
     {
@@ -82,6 +104,21 @@ public class DownloadTask : INotifyPropertyChanged
     {
         get => _referer;
         set { _referer = value; OnPropertyChanged(nameof(Referer)); }
+    }
+
+    /// <summary>Browser User-Agent (browser context); empty = app default.</summary>
+    public string Ua
+    {
+        get => _ua;
+        set { _ua = value ?? string.Empty; OnPropertyChanged(nameof(Ua)); }
+    }
+
+    /// <summary>Browser cookies for this URL's host; null = none. Memory only:
+    /// never written to history.json or any other file.</summary>
+    public List<CookieEntry>? Cookies
+    {
+        get => _cookies;
+        set { _cookies = value; OnPropertyChanged(nameof(Cookies)); }
     }
 
     /// <summary>Thread-safe increment, used by the parallel HTTP chunk writers.</summary>

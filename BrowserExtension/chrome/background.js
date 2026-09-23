@@ -39,12 +39,52 @@ async function heartbeat() {
     }
 }
 
+// Cookies need the "cookies" permission plus host access to the target;
+// any failure degrades to "no cookies" and never blocks the capture.
+const cookiesApi =
+    (typeof browser !== "undefined" && browser && browser.cookies)
+        ? browser.cookies
+        : (typeof chrome !== "undefined" && chrome.cookies ? chrome.cookies : null);
+
+// The browser's context for this transfer: its User-Agent plus exactly the
+// cookies it would send for these URLs (page first, then the media host).
+// Sent ONLY to the local app (127.0.0.1), so the download acts as the same
+// session that already plays the video in this browser.
+async function pageContext(referer, mediaUrl) {
+    const ua = (typeof navigator !== "undefined" && navigator.userAgent) || "";
+    const cookies = [];
+    if (cookiesApi) {
+        const seen = new Set();
+        for (const u of [referer, mediaUrl]) {
+            if (!u || !/^https?:/i.test(u)) continue;
+            try {
+                const list = await cookiesApi.getAll({ url: u });
+                for (const c of list || []) {
+                    const key = (c.domain || "") + "|" + (c.path || "/") + "|" + c.name;
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    cookies.push({
+                        name: c.name, value: c.value, domain: c.domain || "",
+                        path: c.path || "/", hostOnly: !!c.hostOnly,
+                        secure: !!c.secure, expires: Math.floor(c.expirationDate || 0)
+                    });
+                }
+            } catch (_) { /* no host permission for this url - skip */ }
+        }
+    }
+    return { ua: ua, cookies: cookies };
+}
+
 // Returns true only when the app accepted (or already owns) the URL.
 // Offline / excluded / rejected all return false so callers can fall back
 // to letting the browser handle the download itself. `format` is the yt-dlp
 // selector picked in the quality list ("" = automatic best).
 async function send(url, format, referer) {
-    const payload = JSON.stringify({ url: url, source: SOURCE, format: format || "", referer: referer || "" });
+    const ctx = await pageContext(referer || "", url);
+    const payload = JSON.stringify({
+        url: url, source: SOURCE, format: format || "",
+        referer: referer || "", ua: ctx.ua, cookies: ctx.cookies
+    });
     const targets = [base];
     const found = await discover();
     if (found && found !== base) targets.push(found);
@@ -65,7 +105,8 @@ async function send(url, format, referer) {
 // Asks the app for the quality/size list of a stream URL (yt-dlp -F).
 // Resolves to { ok:true, formats:[...] } or { ok:false, error:"..." }.
 async function requestFormats(url, referer) {
-    const payload = JSON.stringify({ url: url, referer: referer || "" });
+    const ctx = await pageContext(referer || "", url);
+    const payload = JSON.stringify({ url: url, referer: referer || "", ua: ctx.ua, cookies: ctx.cookies });
     const targets = [base];
     const found = await discover();
     if (found && found !== base) targets.push(found);

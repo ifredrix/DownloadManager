@@ -25,11 +25,74 @@ public sealed class StreamCapture
     /// <summary>Fallback when ffmpeg is missing: best single MP4 file, no merge.</summary>
     public const string FallbackMp4Format = "b[ext=mp4]/b/best";
 
-    /// <summary>Optional `--referer` argument carrying the page/iframe context.</summary>
-    private static string RefererArg(string referer) =>
-        string.IsNullOrWhiteSpace(referer)
-            ? string.Empty
-            : "--referer \"" + referer.Replace("\"", string.Empty) + "\" ";
+    /// <summary>Strips characters that would break out of a quoted argument
+    /// or split an HTTP header (values come from browsers and cookie
+    /// stores, never from the keyboard - defense in depth).</summary>
+    private static string H(string value) =>
+        (value ?? string.Empty).Replace("\"", string.Empty)
+            .Replace("\r", string.Empty).Replace("\n", string.Empty)
+            .Replace("\t", string.Empty);
+
+    /// <summary>
+    /// Optional `--referer` plus the browser's User-Agent for yt-dlp.
+    /// Cookies go through a temp Netscape jar (--cookies file) instead of
+    /// --add-header: yt-dlp then matches them per domain, so a session
+    /// cookie is never forwarded to a CDN or redirect it does not belong to.
+    /// </summary>
+    private static string ContextArgs(string referer, string ua)
+    {
+        var args = string.Empty;
+        if (!string.IsNullOrWhiteSpace(referer)) args += "--referer \"" + H(referer) + "\" ";
+        if (!string.IsNullOrWhiteSpace(ua)) args += "--add-header \"User-Agent: " + H(ua) + "\" ";
+        return args;
+    }
+
+    /// <summary>Temp Netscape cookie jar for one yt-dlp call; deleted on dispose.</summary>
+    private sealed class CookieJar : IDisposable
+    {
+        private readonly string _path;
+        public string Arg { get; }
+
+        public CookieJar(List<CookieEntry>? cookies)
+        {
+            _path = string.Empty;
+            Arg = string.Empty;
+            if (cookies == null || cookies.Count == 0) return;
+            try
+            {
+                var lines = new List<string>
+                {
+                    "# Netscape HTTP Cookie File",
+                    "# ifredrix Download Manager - temporary jar, deleted after this call"
+                };
+                var sessionExpiry = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 43200;
+                foreach (var c in cookies)
+                {
+                    if (string.IsNullOrWhiteSpace(c.Name)) continue;
+                    var domain = (c.Domain ?? string.Empty).Trim().TrimStart('.');
+                    if (domain.Length == 0) continue;
+                    lines.Add(
+                        (c.HostOnly ? domain : "." + domain) + "\t" +
+                        (c.HostOnly ? "FALSE" : "TRUE") + "\t" +
+                        (string.IsNullOrEmpty(c.Path) ? "/" : c.Path) + "\t" +
+                        (c.Secure ? "TRUE" : "FALSE") + "\t" +
+                        (c.Expires > 0 ? (long)c.Expires : sessionExpiry) + "\t" +
+                        c.Name + "\t" + H(c.Value));
+                }
+                if (lines.Count <= 2) return;
+                _path = Path.Combine(Path.GetTempPath(),
+                    "ifredrix-cookies-" + Guid.NewGuid().ToString("N") + ".txt");
+                File.WriteAllLines(_path, lines);
+                Arg = "--cookies \"" + _path + "\" ";
+            }
+            catch { _path = string.Empty; Arg = string.Empty; }
+        }
+
+        public void Dispose()
+        {
+            try { if (_path.Length > 0) File.Delete(_path); } catch { /* best effort */ }
+        }
+    }
 
     /// <summary>Per-app bundled copy, fetched on first use (no separate install).</summary>
     public static string BundledToolPath => Path.Combine(
@@ -59,6 +122,31 @@ public sealed class StreamCapture
                host.EndsWith("reddit.com") || host.EndsWith("bandcamp.com") ||
                host.EndsWith("nicovideo.jp") || host.EndsWith("bilibili.com");
     }
+
+    /// <summary>
+    /// True for plain progressive files (by path extension): the
+    /// multi-connection range downloader handles them faster than yt-dlp and
+    /// now carries the same browser headers. Callers check stream hosts and
+    /// playlists first, so .m3u8/.mpd deliberately stay out of this list.
+    /// </summary>
+    public static bool IsDirectFileUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) return false;
+        var path = u.AbsolutePath;
+        foreach (var ext in DirectFileExtensions)
+        {
+            if (path.EndsWith(ext, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
+    private static readonly string[] DirectFileExtensions =
+    {
+        ".mp4", ".m4v", ".mkv", ".webm", ".mov", ".avi", ".flv", ".wmv",
+        ".mpg", ".mpeg", ".3gp", ".mp3", ".m4a", ".aac", ".ogg", ".opus",
+        ".flac", ".wav", ".wma", ".zip", ".rar", ".7z", ".exe", ".msi",
+        ".pdf", ".iso", ".gz", ".tar"
+    };
 
     /// <summary>Direct HLS/DASH playlist links convert to MP4 via yt-dlp.</summary>
     public static bool IsPlaylistUrl(string url)
@@ -355,17 +443,19 @@ public sealed class StreamCapture
     }
 
     public async Task<List<StreamFormat>> ListFormatsAsync(
-        string url, CancellationToken ct = default, string referer = "")
+        string url, CancellationToken ct = default, string referer = "",
+        string ua = "", List<CookieEntry>? cookies = null)
     {
         var tool = ResolveTool();
         if (tool == null) throw new FileNotFoundException(
             "yt-dlp is not available. Use Get yt-dlp in this dialog to fetch it.");
 
         var output = new List<string>();
+        using var jar = new CookieJar(cookies);
         using var p = Process.Start(new ProcessStartInfo
         {
             FileName = tool,
-            Arguments = $"--no-warnings --no-playlist {RefererArg(referer)}-F \"{url}\"",
+            Arguments = $"--no-warnings --no-playlist {ContextArgs(referer, ua)}{jar.Arg}-F \"{url}\"",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -463,9 +553,10 @@ public sealed class StreamCapture
     /// the merged file will actually weigh.
     /// </summary>
     public async Task<List<StreamChoice>> ListChoicesAsync(
-        string url, CancellationToken ct = default, string referer = "")
+        string url, CancellationToken ct = default, string referer = "",
+        string ua = "", List<CookieEntry>? cookies = null)
     {
-        var formats = await ListFormatsAsync(url, ct, referer).ConfigureAwait(false);
+        var formats = await ListFormatsAsync(url, ct, referer, ua, cookies).ConfigureAwait(false);
         var choices = new List<StreamChoice>();
         if (formats.Count == 0) return choices;
 
@@ -598,7 +689,7 @@ public sealed class StreamCapture
     public async Task<string?> DownloadAsync(
         string url, string formatId, string destinationDirectory,
         IProgress<StreamProgress>? progress, CancellationToken ct, long speedLimitBps = 0,
-        string referer = "")
+        string referer = "", string ua = "", List<CookieEntry>? cookies = null)
     {
         var tool = ResolveTool();
         if (tool == null) throw new FileNotFoundException(
@@ -616,7 +707,7 @@ public sealed class StreamCapture
                 "ffmpeg is required to merge video and audio.");
         }
 
-        var title = await ProbeTitleAsync(url, ct, referer).ConfigureAwait(false);
+        var title = await ProbeTitleAsync(url, ct, referer, ua, cookies).ConfigureAwait(false);
         var safeTitle = Sanitize(title);
 
         // Merge flag only makes sense for combined (video+audio) selectors;
@@ -630,13 +721,19 @@ public sealed class StreamCapture
             : string.Empty;
         var rateArgs = speedLimitBps > 0 ? $"--limit-rate {FormatRate(speedLimitBps)} " : string.Empty;
 
+        // The auto (best) selector is a long fallback chain - embedding it
+        // verbatim would produce unreadable file names like
+        // "title [bv_[height_=2160]+...].mp4", so label it "best".
+        var formatLabel = formatId == BestMp4Format ? "best" : Sanitize(formatId);
+
+        using var jar = new CookieJar(cookies);
         using var p = Process.Start(new ProcessStartInfo
         {
             FileName = tool,
-            Arguments = $"--no-warnings --no-playlist {RefererArg(referer)}--continue -f \"{formatId}\" " +
+            Arguments = $"--no-warnings --no-playlist {ContextArgs(referer, ua)}{jar.Arg}--continue -f \"{formatId}\" " +
                         $"-P \"{destinationDirectory}\" " +
                         mergeArgs + ffmpegArgs + rateArgs +
-                        $"-o \"%(title).150s [{Sanitize(formatId)}].%(ext)s\" " +
+                        $"-o \"%(title).150s [{formatLabel}].%(ext)s\" " +
                         "--newline " +
                         $"\"{url}\"",
             RedirectStandardOutput = true,
@@ -762,19 +859,22 @@ public sealed class StreamCapture
     }
 
     public Task<string> GetTitleAsync(
-        string url, CancellationToken ct = default, string referer = "")
-        => ProbeTitleAsync(url, ct, referer);
+        string url, CancellationToken ct = default, string referer = "",
+        string ua = "", List<CookieEntry>? cookies = null)
+        => ProbeTitleAsync(url, ct, referer, ua, cookies);
 
     private async Task<string> ProbeTitleAsync(
-        string url, CancellationToken ct, string referer = "")
+        string url, CancellationToken ct, string referer = "",
+        string ua = "", List<CookieEntry>? cookies = null)
     {
         var tool = ResolveTool();
         try
         {
+            using var jar = new CookieJar(cookies);
             using var p = Process.Start(new ProcessStartInfo
             {
                 FileName = tool!,
-                Arguments = $"--no-warnings --no-playlist {RefererArg(referer)}--print title -- \"{url}\"",
+                Arguments = $"--no-warnings --no-playlist {ContextArgs(referer, ua)}{jar.Arg}--print title -- \"{url}\"",
                 RedirectStandardOutput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true

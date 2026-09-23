@@ -161,11 +161,13 @@ public sealed class DownloadManager : IDisposable
     // ---------------------------------------------------------------- add ----
 
     public Task<DownloadTask> AddDownloadAsync(
-        string source, DownloadType type = DownloadType.Regular, string referer = "")
-        => AddDownloadCoreAsync(source, type, forceTor: false, referer: referer);
+        string source, DownloadType type = DownloadType.Regular, string referer = "",
+        string ua = "", List<CookieEntry>? cookies = null)
+        => AddDownloadCoreAsync(source, type, forceTor: false, referer: referer, ua: ua, cookies: cookies);
 
     private async Task<DownloadTask> AddDownloadCoreAsync(
-        string source, DownloadType type, bool forceTor, string referer = "")
+        string source, DownloadType type, bool forceTor, string referer = "",
+        string ua = "", List<CookieEntry>? cookies = null)
     {
         if (string.IsNullOrWhiteSpace(source))
         {
@@ -181,12 +183,29 @@ public sealed class DownloadManager : IDisposable
             source = "http://" + source["mms://".Length..];
         }
 
-        var task = new DownloadTask { Url = source, Type = type, Referer = referer };
+        var task = new DownloadTask
+        {
+            Url = source, Type = type, Referer = referer, Ua = ua, Cookies = cookies
+        };
 
         if (type == DownloadType.Regular)
         {
-            var probed = await ProbeDownloadAsync(source, forceTor, referer).ConfigureAwait(false);
-            return await AddProbedAsync(probed).ConfigureAwait(false);
+            try
+            {
+                var probed = await ProbeDownloadAsync(source, forceTor, referer, ua, cookies)
+                    .ConfigureAwait(false);
+                return await AddProbedAsync(probed).ConfigureAwait(false);
+            }
+            catch (InvalidOperationException ex)
+                when (ex.Message.StartsWith(HttpDownloader.HlsPlaylistMarker, StringComparison.Ordinal))
+            {
+                // Extensionless HLS/DASH: the probe saw a playlist content
+                // type, not a file. yt-dlp's generic extractor turns the same
+                // URL into an MP4; the range downloader would only fetch the
+                // playlist text.
+                return await AddStreamAsync(source, string.Empty, referer, ua, cookies)
+                    .ConfigureAwait(false);
+            }
         }
         else if (source.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
         {
@@ -239,6 +258,10 @@ public sealed class DownloadManager : IDisposable
         public bool IsFtp { get; set; }
         /// <summary>Origin page forwarded as HTTP Referer; empty = none.</summary>
         public string Referer { get; set; } = string.Empty;
+        /// <summary>Browser User-Agent; empty = app default.</summary>
+        public string Ua { get; set; } = string.Empty;
+        /// <summary>Browser cookies for this URL's host; null = none.</summary>
+        public List<CookieEntry>? Cookies { get; set; }
         public string Category { get; set; } = "Other";
         public string DefaultDir { get; set; } = string.Empty;
         /// <summary>True when the user picked the folder explicitly.</summary>
@@ -247,7 +270,8 @@ public sealed class DownloadManager : IDisposable
 
     /// <summary>Probes a regular link without queueing (New Download dialog).</summary>
     public async Task<ProbedDownload> ProbeDownloadAsync(
-        string source, bool forceTor = false, string referer = "")
+        string source, bool forceTor = false, string referer = "",
+        string ua = "", List<CookieEntry>? cookies = null)
     {
         if (string.IsNullOrWhiteSpace(source))
         {
@@ -277,6 +301,8 @@ public sealed class DownloadManager : IDisposable
         {
             Source = source,
             Referer = referer,
+            Ua = ua,
+            Cookies = cookies,
             UseTor = routeTor || TorProxy.IsOnionUrl(source),
             IsFtp = uri.Scheme == Uri.UriSchemeFtp || uri.Scheme == "ftps"
         };
@@ -301,7 +327,8 @@ public sealed class DownloadManager : IDisposable
         }
         else
         {
-            var probe = await ProbeWithRetryAsync(source, routeTor, referer).ConfigureAwait(false);
+            var probe = await ProbeWithRetryAsync(source, routeTor, referer, ua, cookies)
+                .ConfigureAwait(false);
             if (!probe.Ok)
             {
                 throw new InvalidOperationException(probe.Error ?? "The server refused the request.");
@@ -337,6 +364,8 @@ public sealed class DownloadManager : IDisposable
             SupportsRange = probed.SupportsRange,
             UseTor = probed.UseTor,
             Referer = probed.Referer,
+            Ua = probed.Ua,
+            Cookies = probed.Cookies,
             Category = GetCategory(fileName)
         };
         var baseDir = probed.CustomDir && !string.IsNullOrWhiteSpace(probed.DefaultDir)
@@ -359,7 +388,8 @@ public sealed class DownloadManager : IDisposable
     /// MP4 via yt-dlp. No format dialog; progress flows through TaskUpdated.
     /// </summary>
     public async Task<DownloadTask> AddStreamAsync(
-        string url, string formatId = "", string referer = "")
+        string url, string formatId = "", string referer = "",
+        string ua = "", List<CookieEntry>? cookies = null)
     {
         if (string.IsNullOrWhiteSpace(url))
         {
@@ -387,6 +417,8 @@ public sealed class DownloadManager : IDisposable
             Url = url,
             Type = DownloadType.Stream,
             Referer = referer,
+            Ua = ua,
+            Cookies = cookies,
             FileName = baseName + " (resolving...)",
             FileSize = 0,
             SupportsRange = false,
@@ -408,7 +440,8 @@ public sealed class DownloadManager : IDisposable
     /// per resolution plus audio-only tracks (yt-dlp -F, a few seconds).
     /// </summary>
     public Task<List<StreamChoice>> ListStreamChoicesAsync(
-        string url, CancellationToken ct = default, string referer = "")
+        string url, CancellationToken ct = default, string referer = "",
+        string ua = "", List<CookieEntry>? cookies = null)
     {
         if (string.IsNullOrWhiteSpace(url))
         {
@@ -421,7 +454,7 @@ public sealed class DownloadManager : IDisposable
                 "yt-dlp is not available yet. Add any stream link once in the app to auto-fetch it.");
         }
 
-        return _streams.ListChoicesAsync(url.Trim(), ct, referer);
+        return _streams.ListChoicesAsync(url.Trim(), ct, referer, ua, cookies);
     }
 
     /// <summary>
@@ -433,13 +466,19 @@ public sealed class DownloadManager : IDisposable
 
     /// <summary>Probes with retries for flaky servers (mirror behaviour).</summary>
     private async Task<ProbeResult> ProbeWithRetryAsync(
-        string source, bool routeTor, string referer = "")
+        string source, bool routeTor, string referer = "",
+        string ua = "", List<CookieEntry>? cookies = null)
     {
         for (var attempt = 1; ; attempt++)
         {
             var probe = await _http.ProbeAsync(
-                source, useTor: routeTor, referer: referer).ConfigureAwait(false);
-            if (probe.Ok || attempt >= 3) return probe;
+                source, useTor: routeTor, referer: referer, ua: ua, cookies: cookies)
+                .ConfigureAwait(false);
+            // A playlist answer is definitive (the caller reroutes it to
+            // yt-dlp): retrying would only stall that path by seconds.
+            var playlist = probe.Error?.StartsWith(
+                HttpDownloader.HlsPlaylistMarker, StringComparison.Ordinal) ?? false;
+            if (probe.Ok || playlist || attempt >= 3) return probe;
             await Task.Delay(1000 * attempt).ConfigureAwait(false);
         }
     }
@@ -827,7 +866,9 @@ public sealed class DownloadManager : IDisposable
         // Best-effort title so the row shows something meaningful.
         try
         {
-            var title = await _streams.GetTitleAsync(task.Url, ct, task.Referer).ConfigureAwait(false);
+            var title = await _streams.GetTitleAsync(
+                    task.Url, ct, task.Referer, task.Ua, task.Cookies)
+                .ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(title))
             {
                 task.FileName = HttpDownloader.SanitizeFileName(title.Trim()) + ".mp4";
@@ -864,7 +905,7 @@ public sealed class DownloadManager : IDisposable
         {
             savedPath = await _streams.DownloadAsync(
                     task.Url, format, task.SavePath, progress, ct, task.SpeedLimitBps,
-                    task.Referer)
+                    task.Referer, task.Ua, task.Cookies)
                 .ConfigureAwait(false);
         }
         catch (InvalidOperationException ex)

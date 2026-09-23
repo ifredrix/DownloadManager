@@ -8,8 +8,8 @@
       "id": "ifredrix-download-manager@local"
     }
   },
-  "permissions": ["contextMenus", "storage", "menus", "downloads"],
-  "host_permissions": ["http://127.0.0.1:8795/*", "http://127.0.0.1:8796/*", "http://127.0.0.1:8797/*", "http://127.0.0.1:8798/*", "http://localhost:8795/*", "http://localhost:8796/*", "http://localhost:8797/*", "http://localhost:8798/*"],
+  "permissions": ["contextMenus", "storage", "menus", "downloads", "cookies"],
+  "host_permissions": ["http://127.0.0.1:8795/*", "http://127.0.0.1:8796/*", "http://127.0.0.1:8797/*", "http://127.0.0.1:8798/*", "http://localhost:8795/*", "http://localhost:8796/*", "http://localhost:8797/*", "http://localhost:8798/*", "http://*/*", "https://*/*"],
   "background": {
     "scripts": ["background.js"]
   },

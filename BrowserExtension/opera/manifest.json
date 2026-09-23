@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "version_name": "0.1.0-beta",
   "description": "Autodownload with ifredrix Download Manager: every link you click is taken over by the app automatically, plus right-click any link, video or audio and choose 'Send to ifredrix', or use the download panel over videos to pick quality and size first.",
-  "permissions": ["contextMenus", "storage", "downloads"],
-  "host_permissions": ["http://127.0.0.1:8795/*", "http://127.0.0.1:8796/*", "http://127.0.0.1:8797/*", "http://127.0.0.1:8798/*", "http://localhost:8795/*", "http://localhost:8796/*", "http://localhost:8797/*", "http://localhost:8798/*"],
+  "permissions": ["contextMenus", "storage", "downloads", "cookies"],
+  "host_permissions": ["http://127.0.0.1:8795/*", "http://127.0.0.1:8796/*", "http://127.0.0.1:8797/*", "http://127.0.0.1:8798/*", "http://localhost:8795/*", "http://localhost:8796/*", "http://localhost:8797/*", "http://localhost:8798/*", "http://*/*", "https://*/*"],
   "background": {
     "service_worker": "background.js"
   },

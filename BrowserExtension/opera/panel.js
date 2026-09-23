@@ -78,12 +78,47 @@
         return href;
     }
 
+    // MSE/blob frames expose no http src. Resource Timing lists every
+    // subresource THIS frame fetched (cross-origin URLs are visible even
+    // without Timing-Allow-Origin) - the manifest (.m3u8/.mpd) or the
+    // progressive file in there is the real media URL the player loaded.
+    function findMediaViaTiming() {
+        try {
+            const entries = performance.getEntriesByType("resource") || [];
+            const items = [];
+            for (const e of entries) {
+                const u = e && e.name;
+                if (!u || !/^https?:\/\//i.test(u)) continue;
+                // Match extensions on the PATH only: query strings carry
+                // tokens and #fragments carry media times.
+                items.push({ url: u, path: u.split(/[?#]/)[0] });
+            }
+            const pick = (re) => {
+                for (let i = items.length - 1; i >= 0; i--) {
+                    if (re.test(items[i].path)) return items[i].url;
+                }
+                return null;
+            };
+            // Manifests beat progressive video beats audio-only; newest
+            // fetch first, because the active resource is the latest entry.
+            return pick(/\.(m3u8|mpd)$/)
+                || pick(/\.(mp4|m4v|webm|mov|mkv|ogv)$/)
+                || pick(/\.(m4a|mp3|aac|ogg|opus|flac|wav)$/);
+        } catch (_) { return null; }
+    }
+
     function candidateUrl(video) {
         const src = video.currentSrc || video.src || "";
         if (/^https?:\/\//i.test(src)) return unwrapPageUrl(src);
         const source = video.querySelector("source[src]");
         if (source && /^https?:\/\//i.test(source.src)) return unwrapPageUrl(source.src);
-        return unwrapPageUrl(location.href);
+        const page = location.href;
+        const unwrapped = unwrapPageUrl(page);
+        // A wrapper the unwrap rules know (Dailymotion ...) wins: that path
+        // is proven. Otherwise ask the resource timeline what this frame
+        // really fetched, before falling back to the bare page URL.
+        if (unwrapped !== page) return unwrapped;
+        return findMediaViaTiming() || page;
     }
 
     // Chrome answers via callback; Firefox may hand back a promise. Support

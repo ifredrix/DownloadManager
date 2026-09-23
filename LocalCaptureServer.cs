@@ -245,7 +245,8 @@ public sealed class LocalCaptureServer : IDisposable
         List<StreamChoice> choices;
         try
         {
-            choices = await _manager.ListStreamChoicesAsync(payload.Url, _cts.Token, payload.Referer)
+            choices = await _manager.ListStreamChoicesAsync(
+                    payload.Url, _cts.Token, payload.Referer, payload.Ua, payload.Cookies)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -311,13 +312,26 @@ public sealed class LocalCaptureServer : IDisposable
         string? failure = null;
         try
         {
-            if (StreamCapture.IsStreamingUrl(payload.Url) || StreamCapture.IsPlaylistUrl(payload.Url))
+            // yt-dlp must handle: known stream hosts, HLS/DASH playlists,
+            // and any URL the panel listed formats for that is not a plain
+            // progressive file - format ids only mean something to yt-dlp,
+            // so the raw range downloader must never drop them.
+            var viaYtDlp =
+                StreamCapture.IsStreamingUrl(payload.Url) ||
+                StreamCapture.IsPlaylistUrl(payload.Url) ||
+                (!string.IsNullOrWhiteSpace(wantedFormat) &&
+                 !StreamCapture.IsDirectFileUrl(payload.Url));
+
+            if (viaYtDlp)
             {
-                await _manager.AddStreamAsync(payload.Url, wantedFormat, payload.Referer).ConfigureAwait(false);
+                await _manager.AddStreamAsync(
+                        payload.Url, wantedFormat, payload.Referer, payload.Ua, payload.Cookies)
+                    .ConfigureAwait(false);
             }
             else
             {
-                await _manager.AddDownloadAsync(payload.Url, DownloadType.Regular, payload.Referer)
+                await _manager.AddDownloadAsync(
+                        payload.Url, DownloadType.Regular, payload.Referer, payload.Ua, payload.Cookies)
                     .ConfigureAwait(false);
             }
         }
@@ -378,6 +392,15 @@ public sealed class LocalCaptureServer : IDisposable
         // Optional: older extensions omit it (= no context, old behaviour).
         [JsonPropertyName("referer")]
         public string Referer { get; set; } = string.Empty;
+
+        // Browser User-Agent + the page's cookies (harvested by the
+        // extension): the transfer then runs as the same session that is
+        // already playing the video. Both optional.
+        [JsonPropertyName("ua")]
+        public string Ua { get; set; } = string.Empty;
+
+        [JsonPropertyName("cookies")]
+        public List<CookieEntry>? Cookies { get; set; }
     }
 
     public sealed class CapturedLink

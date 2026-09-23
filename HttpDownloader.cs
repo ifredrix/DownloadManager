@@ -32,6 +32,48 @@ public sealed class ProbeResult
 /// </summary>
 public sealed class HttpDownloader
 {
+    /// <summary>
+    /// Probe error marker for "this URL is an HLS/DASH playlist, not a
+    /// file": DownloadManager catches it and reroutes to yt-dlp.
+    /// </summary>
+    public const string HlsPlaylistMarker = "[hls]";
+
+    /// <summary>Removes characters that could split an HTTP header.</summary>
+    public static string SanitizeHeaderValue(string value) =>
+        (value ?? string.Empty).Replace("\r", string.Empty).Replace("\n", string.Empty)
+            .Replace("\"", string.Empty);
+
+    /// <summary>
+    /// The Cookie header the BROWSER would send for this URL: only cookies
+    /// whose domain matches the host and whose path covers the request.
+    /// Cookies arrive from the extension over loopback and leave here
+    /// straight to their own host - never to an unrelated one.
+    /// </summary>
+    public static string CookieHeaderFor(string url, List<CookieEntry>? cookies)
+    {
+        if (cookies == null || cookies.Count == 0) return string.Empty;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) return string.Empty;
+        var host = u.Host;
+        var pairs = new List<string>();
+        foreach (var c in cookies)
+        {
+            if (string.IsNullOrWhiteSpace(c.Name)) continue;
+            var domain = (c.Domain ?? string.Empty).Trim().TrimStart('.');
+            if (domain.Length == 0) continue;
+            if (!string.Equals(host, domain, StringComparison.OrdinalIgnoreCase) &&
+                !host.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase)) continue;
+            var cpath = string.IsNullOrEmpty(c.Path) ? "/" : c.Path;
+            var covered = cpath == "/" ||
+                string.Equals(u.AbsolutePath, cpath, StringComparison.OrdinalIgnoreCase) ||
+                u.AbsolutePath.StartsWith(
+                    cpath.EndsWith("/") ? cpath : cpath + "/", StringComparison.OrdinalIgnoreCase);
+            if (!covered) continue;
+            if (c.Secure && u.Scheme != Uri.UriSchemeHttps) continue;
+            pairs.Add(c.Name + "=" + SanitizeHeaderValue(c.Value));
+        }
+        return string.Join("; ", pairs);
+    }
+
     private const int BufferSize = 64 * 1024;
 
     // Hard ceiling for one download. 25 is the sweet spot on most servers;
@@ -169,7 +211,8 @@ public sealed class HttpDownloader
 
     /// <summary>Asks the server for size, filename and range support.</summary>
     public async Task<ProbeResult> ProbeAsync(
-        string url, bool useTor = false, CancellationToken ct = default, string referer = "")
+        string url, bool useTor = false, CancellationToken ct = default, string referer = "",
+        string ua = "", List<CookieEntry>? cookies = null)
     {
         var result = new ProbeResult();
         try
@@ -193,6 +236,17 @@ public sealed class HttpDownloader
             {
                 request.Headers.TryAddWithoutValidation("Referer", referer);
             }
+            if (!string.IsNullOrWhiteSpace(ua))
+            {
+                // Overrides the app-wide default: the origin sees the very
+                // browser that is already playing this video.
+                request.Headers.TryAddWithoutValidation("User-Agent", SanitizeHeaderValue(ua));
+            }
+            var probeCookies = CookieHeaderFor(url, cookies);
+            if (probeCookies.Length > 0)
+            {
+                request.Headers.TryAddWithoutValidation("Cookie", probeCookies);
+            }
 
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
                 .ConfigureAwait(false);
@@ -200,6 +254,19 @@ public sealed class HttpDownloader
             if (!response.IsSuccessStatusCode)
             {
                 result.Error = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}".Trim();
+                return result;
+            }
+
+            // Extensionless HLS/DASH links answer with a manifest content
+            // type: that is a playlist, not a file. Flag it so the caller
+            // reroutes to yt-dlp instead of "downloading" the playlist text.
+            var mediaType = response.Content.Headers.ContentType?.MediaType;
+            if (mediaType != null &&
+                (mediaType.Contains("mpegurl", StringComparison.OrdinalIgnoreCase) ||
+                 mediaType.Contains("dash+xml", StringComparison.OrdinalIgnoreCase)))
+            {
+                result.Error = HlsPlaylistMarker +
+                    " the URL serves a streaming playlist (HLS/DASH), not a file.";
                 return result;
             }
 
@@ -368,6 +435,15 @@ public sealed class HttpDownloader
         if (!string.IsNullOrWhiteSpace(task.Referer))
         {
             request.Headers.TryAddWithoutValidation("Referer", task.Referer);
+        }
+        if (!string.IsNullOrWhiteSpace(task.Ua))
+        {
+            request.Headers.TryAddWithoutValidation("User-Agent", SanitizeHeaderValue(task.Ua));
+        }
+        var segmentCookies = CookieHeaderFor(task.Url, task.Cookies);
+        if (segmentCookies.Length > 0)
+        {
+            request.Headers.TryAddWithoutValidation("Cookie", segmentCookies);
         }
 
         var client = task.UseTor ? TorClient() : _transfer;
