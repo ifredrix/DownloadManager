@@ -1,6 +1,6 @@
 {
   "version": "0.1.0-beta",
   "url": "https://sourceforge.net/projects/SLUG-PLACEHOLDER/files/ifredrixDownloadManager-0.1.0-beta-x64.msi/download",
-  "sha256": "a8f0c337d772338674ec1cf07019e6e178ff0bf9db12977e837672878bb3cd03",
-  "notes": "ifredrix Download Manager 0.1.0-beta - universal capture (UA+cookies browser ke yt-dlp/HttpDownloader, deteksi media timing, reroute HLS), label file best, pub FDD bersih, MIT installer. URL is a placeholder until the SourceForge slug is registered."
+  "sha256": "c47c1beddf5d515516039ff9a6e43c6ff12e808b9a54744edd38f3067f4c6917",
+  "notes": "ifredrix Download Manager 0.1.0-beta - Tor dialog layout fix, independent progress window, yt-dlp via Tor (socks5h) for route-all, MIT installer. URL is a placeholder until the SourceForge slug is registered."
 }

@@ -48,11 +48,11 @@ public sealed class ProgressForm : Form
         _taskId = taskId;
 
         Text = "…";
-        StartPosition = FormStartPosition.CenterParent;
+        StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.Sizable;
         MinimumSize = new Size(560, 420);
         ClientSize = new Size(640, 600);
-        ShowInTaskbar = false;
+        ShowInTaskbar = true;
         Font = new Font("Segoe UI", 9F);
 
         var tabs = new TabControl

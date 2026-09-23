@@ -38,7 +38,7 @@ public sealed class TorSettingsForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        ClientSize = new Size(540, 300);
+        ClientSize = new Size(540, 294);
         ShowInTaskbar = false;
         Font = new Font("Segoe UI", 9F);
 
@@ -87,25 +87,29 @@ public sealed class TorSettingsForm : Form
             Location = new Point(16, 118)
         };
 
+        // Fixed-width rows: tor.hint spans two lines (\r\n) and no button
+        // ever shares a row with a label, so long localized strings and
+        // DPI scaling can never stack controls on top of each other.
         var hint = new Label
         {
             Text = T("tor.hint"),
-            AutoSize = true,
-            Location = new Point(16, 148)
+            AutoSize = false,
+            Location = new Point(16, 146),
+            Size = new Size(508, 36)
         };
 
-        _lblStatus = new Label { Text = "Status: -", AutoSize = true, Location = new Point(16, 200) };
+        _lblBundle = new Label { Text = "Bundled Tor: checking...", AutoSize = false, Location = new Point(16, 186), Size = new Size(508, 20) };
 
-        _lblBundle = new Label { Text = "Bundled Tor: checking...", AutoSize = true, Location = new Point(16, 180) };
-        _btnBundle = new Button { Text = T("tor.checkUpdate"), Location = new Point(394, 178), Size = new Size(130, 25), FlatStyle = FlatStyle.Flat, Anchor = AnchorStyles.Top | AnchorStyles.Right };
+        _lblStatus = new Label { Text = "Status: -", AutoSize = false, Location = new Point(16, 210), Size = new Size(508, 36) };
+
+        _btnTest = new Button { Text = T("tor.test"), Location = new Point(16, 252), Size = new Size(90, 30), FlatStyle = FlatStyle.Flat, Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
+        _btnTest.Click += async (_, _) => await TestAsync();
+        _btnBundle = new Button { Text = T("tor.checkUpdate"), Location = new Point(196, 252), Size = new Size(150, 30), FlatStyle = FlatStyle.Flat, Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
         _btnBundle.Click += async (_, _) => await BundleFlowAsync();
 
-        _btnTest = new Button { Text = T("tor.test"), Location = new Point(16, 226), Size = new Size(90, 30), FlatStyle = FlatStyle.Flat, Anchor = AnchorStyles.Bottom | AnchorStyles.Left };
-        _btnTest.Click += async (_, _) => await TestAsync();
-
-        _ok = new Button { Text = T("dlg.ok"), Location = new Point(342, 226), Size = new Size(90, 30), FlatStyle = FlatStyle.Flat, Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+        _ok = new Button { Text = T("dlg.ok"), Location = new Point(342, 252), Size = new Size(90, 30), FlatStyle = FlatStyle.Flat, Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
         _ok.Click += (_, _) => { Save(); DialogResult = DialogResult.OK; Close(); };
-        _cancel = new Button { Text = T("dlg.cancel"), Location = new Point(438, 226), Size = new Size(86, 30), FlatStyle = FlatStyle.Flat, Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
+        _cancel = new Button { Text = T("dlg.cancel"), Location = new Point(438, 252), Size = new Size(86, 30), FlatStyle = FlatStyle.Flat, Anchor = AnchorStyles.Bottom | AnchorStyles.Right };
         _cancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
 
         AcceptButton = _ok;

@@ -47,6 +47,23 @@ public sealed class StreamCapture
         return args;
     }
 
+    /// <summary>
+    /// Optional `--proxy` for yt-dlp (Tor routing). Only strict proxy URLs
+    /// pass: anything with quotes, whitespace or no scheme is dropped, so a
+    /// hostile value can never break out of the argument. socks5h keeps DNS
+    /// resolution on the proxy side - required to bypass local DNS blocks.
+    /// </summary>
+    private static string ProxyArg(string proxy)
+    {
+        proxy = (proxy ?? string.Empty).Trim();
+        if (proxy.Length == 0 || !proxy.Contains("://")) return string.Empty;
+        foreach (var c in proxy)
+        {
+            if (c == '"' || c == '\'' || char.IsWhiteSpace(c)) return string.Empty;
+        }
+        return "--proxy \"" + proxy + "\" ";
+    }
+
     /// <summary>Temp Netscape cookie jar for one yt-dlp call; deleted on dispose.</summary>
     private sealed class CookieJar : IDisposable
     {
@@ -444,7 +461,7 @@ public sealed class StreamCapture
 
     public async Task<List<StreamFormat>> ListFormatsAsync(
         string url, CancellationToken ct = default, string referer = "",
-        string ua = "", List<CookieEntry>? cookies = null)
+        string ua = "", List<CookieEntry>? cookies = null, string proxy = "")
     {
         var tool = ResolveTool();
         if (tool == null) throw new FileNotFoundException(
@@ -455,7 +472,7 @@ public sealed class StreamCapture
         using var p = Process.Start(new ProcessStartInfo
         {
             FileName = tool,
-            Arguments = $"--no-warnings --no-playlist {ContextArgs(referer, ua)}{jar.Arg}-F \"{url}\"",
+            Arguments = $"--no-warnings --no-playlist {ContextArgs(referer, ua)}{jar.Arg}{ProxyArg(proxy)}-F \"{url}\"",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -554,9 +571,9 @@ public sealed class StreamCapture
     /// </summary>
     public async Task<List<StreamChoice>> ListChoicesAsync(
         string url, CancellationToken ct = default, string referer = "",
-        string ua = "", List<CookieEntry>? cookies = null)
+        string ua = "", List<CookieEntry>? cookies = null, string proxy = "")
     {
-        var formats = await ListFormatsAsync(url, ct, referer, ua, cookies).ConfigureAwait(false);
+        var formats = await ListFormatsAsync(url, ct, referer, ua, cookies, proxy).ConfigureAwait(false);
         var choices = new List<StreamChoice>();
         if (formats.Count == 0) return choices;
 
@@ -689,7 +706,8 @@ public sealed class StreamCapture
     public async Task<string?> DownloadAsync(
         string url, string formatId, string destinationDirectory,
         IProgress<StreamProgress>? progress, CancellationToken ct, long speedLimitBps = 0,
-        string referer = "", string ua = "", List<CookieEntry>? cookies = null)
+        string referer = "", string ua = "", List<CookieEntry>? cookies = null,
+        string proxy = "")
     {
         var tool = ResolveTool();
         if (tool == null) throw new FileNotFoundException(
@@ -730,7 +748,7 @@ public sealed class StreamCapture
         using var p = Process.Start(new ProcessStartInfo
         {
             FileName = tool,
-            Arguments = $"--no-warnings --no-playlist {ContextArgs(referer, ua)}{jar.Arg}--continue -f \"{formatId}\" " +
+            Arguments = $"--no-warnings --no-playlist {ContextArgs(referer, ua)}{jar.Arg}{ProxyArg(proxy)}--continue -f \"{formatId}\" " +
                         $"-P \"{destinationDirectory}\" " +
                         mergeArgs + ffmpegArgs + rateArgs +
                         $"-o \"%(title).150s [{formatLabel}].%(ext)s\" " +
@@ -860,12 +878,12 @@ public sealed class StreamCapture
 
     public Task<string> GetTitleAsync(
         string url, CancellationToken ct = default, string referer = "",
-        string ua = "", List<CookieEntry>? cookies = null)
-        => ProbeTitleAsync(url, ct, referer, ua, cookies);
+        string ua = "", List<CookieEntry>? cookies = null, string proxy = "")
+        => ProbeTitleAsync(url, ct, referer, ua, cookies, proxy);
 
     private async Task<string> ProbeTitleAsync(
         string url, CancellationToken ct, string referer = "",
-        string ua = "", List<CookieEntry>? cookies = null)
+        string ua = "", List<CookieEntry>? cookies = null, string proxy = "")
     {
         var tool = ResolveTool();
         try
@@ -874,7 +892,7 @@ public sealed class StreamCapture
             using var p = Process.Start(new ProcessStartInfo
             {
                 FileName = tool!,
-                Arguments = $"--no-warnings --no-playlist {ContextArgs(referer, ua)}{jar.Arg}--print title -- \"{url}\"",
+                Arguments = $"--no-warnings --no-playlist {ContextArgs(referer, ua)}{jar.Arg}{ProxyArg(proxy)}--print title -- \"{url}\"",
                 RedirectStandardOutput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true

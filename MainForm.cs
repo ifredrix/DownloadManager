@@ -1775,7 +1775,11 @@ public partial class MainForm : Form
         dialog.ShowDialog(this);
     }
 
-    /// <summary>Opens (or focuses) the per-download progress window.</summary>
+    /// <summary>
+    /// Opens (or focuses) the per-download progress window. It is a fully
+    /// independent top-level window (own taskbar entry, no owner): it stays
+    /// usable while the main window is minimized or covered.
+    /// </summary>
     private void OpenProgress()
     {
         if (_selectedTask == null || _downloadManager == null) return;
@@ -1787,7 +1791,7 @@ public partial class MainForm : Form
         var window = new ProgressForm(_downloadManager, _selectedTask.Id);
         window.FormClosed += (_, _) => _progressWindows.Remove(_selectedTask.Id);
         _progressWindows[_selectedTask.Id] = window;
-        window.Show(this);
+        window.Show();
     }
 
     private void OpenChecksum()

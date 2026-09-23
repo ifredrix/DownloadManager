@@ -135,6 +135,19 @@ public sealed class DownloadManager : IDisposable
     /// <summary>When true, every HTTP(S) download is routed via Tor.</summary>
     public bool RouteAllViaTor { get; set; }
 
+    /// <summary>
+    /// SOCKS proxy URL for yt-dlp when this URL must travel via Tor
+    /// (route-all + non-local host): socks5h keeps DNS resolution on the
+    /// Tor exit, bypassing local DNS blocks. Empty = direct connection.
+    /// </summary>
+    private string TorProxyFor(string url)
+    {
+        if (!RouteAllViaTor) return string.Empty;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return string.Empty;
+        if (TorProxy.IsLocalUrl(uri)) return string.Empty;
+        return $"socks5h://{TorProxy.Host}:{TorProxy.Port}";
+    }
+
     /// <summary>Per-category save folders (empty = main download path).</summary>
     public Dictionary<string, string> CategoryDirs { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -412,6 +425,7 @@ public sealed class DownloadManager : IDisposable
 
         var baseName = HttpDownloader.SanitizeFileName(
             "stream-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
+        var routeTor = RouteAllViaTor && !TorProxy.IsLocalUrl(uri);
         var task = new DownloadTask
         {
             Url = url,
@@ -419,6 +433,7 @@ public sealed class DownloadManager : IDisposable
             Referer = referer,
             Ua = ua,
             Cookies = cookies,
+            UseTor = routeTor,
             FileName = baseName + " (resolving...)",
             FileSize = 0,
             SupportsRange = false,
@@ -454,7 +469,9 @@ public sealed class DownloadManager : IDisposable
                 "yt-dlp is not available yet. Add any stream link once in the app to auto-fetch it.");
         }
 
-        return _streams.ListChoicesAsync(url.Trim(), ct, referer, ua, cookies);
+        var trimmed = url.Trim();
+        return _streams.ListChoicesAsync(
+            trimmed, ct, referer, ua, cookies, TorProxyFor(trimmed));
     }
 
     /// <summary>
@@ -864,10 +881,11 @@ public sealed class DownloadManager : IDisposable
         Directory.CreateDirectory(task.SavePath);
 
         // Best-effort title so the row shows something meaningful.
+        var proxy = TorProxyFor(task.Url);
         try
         {
             var title = await _streams.GetTitleAsync(
-                    task.Url, ct, task.Referer, task.Ua, task.Cookies)
+                    task.Url, ct, task.Referer, task.Ua, task.Cookies, proxy)
                 .ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(title))
             {
@@ -905,7 +923,7 @@ public sealed class DownloadManager : IDisposable
         {
             savedPath = await _streams.DownloadAsync(
                     task.Url, format, task.SavePath, progress, ct, task.SpeedLimitBps,
-                    task.Referer, task.Ua, task.Cookies)
+                    task.Referer, task.Ua, task.Cookies, proxy)
                 .ConfigureAwait(false);
         }
         catch (InvalidOperationException ex)
@@ -925,7 +943,8 @@ public sealed class DownloadManager : IDisposable
                 await _streams.EnsureFfmpegAsync(null, ct).ConfigureAwait(false);
                 task.DownloadedBytes = 0;
                 savedPath = await _streams.DownloadAsync(
-                        task.Url, format, task.SavePath, progress, ct, task.SpeedLimitBps)
+                        task.Url, format, task.SavePath, progress, ct, task.SpeedLimitBps,
+                        task.Referer, task.Ua, task.Cookies, proxy)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -939,7 +958,8 @@ public sealed class DownloadManager : IDisposable
                 task.DownloadedBytes = 0;
                 StreamCapture.PurgeFragments(task.SavePath);
                 savedPath = await _streams.DownloadAsync(
-                        task.Url, StreamCapture.FallbackMp4Format, task.SavePath, progress, ct, task.SpeedLimitBps)
+                        task.Url, StreamCapture.FallbackMp4Format, task.SavePath, progress, ct, task.SpeedLimitBps,
+                        task.Referer, task.Ua, task.Cookies, proxy)
                     .ConfigureAwait(false);
             }
         }
