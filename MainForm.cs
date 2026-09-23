@@ -95,7 +95,6 @@ public partial class MainForm : Form
         btnOpenFolder.Text = T("btn.openFolder");
         lblSearch.Text = T("lbl.search");
         lblCategoryFilter.Text = T("lbl.category");
-        lblTitle.Text = T("lbl.tray");
 
         dataGridView.Columns["FileName"].HeaderText = T("col.filename");
         dataGridView.Columns["Size"].HeaderText = T("col.size");
@@ -134,7 +133,19 @@ public partial class MainForm : Form
         InitializeComponent();
 
         _uiTimer = new System.Windows.Forms.Timer { Interval = 1000 };
-        _uiTimer.Tick += (_, _) => { UpdateStatusInfo(); UpdateCaptureIndicators(); };
+        var historyAutosaveTicks = 0;
+        _uiTimer.Tick += (_, _) =>
+        {
+            UpdateStatusInfo();
+            UpdateCaptureIndicators();
+            // History persisted only on FormClosing and explicit actions, so a
+            // hard death mid-download dropped in-flight tasks. Autosave every
+            // minute: at most one minute of progress can ever be at risk, and
+            // the sidecar on disk still owns the real resume data.
+            if (++historyAutosaveTicks < 60) return;
+            historyAutosaveTicks = 0;
+            try { _downloadManager?.SaveHistory(AppSettings.HistoryFile); } catch { }
+        };
 
         _clipboardTimer = new System.Windows.Forms.Timer { Interval = 1200 };
         _clipboardTimer.Tick += ClipboardTimer_Tick;
@@ -153,11 +164,11 @@ public partial class MainForm : Form
         btnAddUrl.Tag = "primary";
         Theme.Apply("Light", "Blue");
         ApplyTheme();
-        SetupTitleBar();
+        SetupColumnHeaders();
         SetupMenuBar();
     }
 
-    /// <summary>Menu bar under the custom title bar.</summary>
+    /// <summary>Menu bar directly under the native window caption.</summary>
     private void SetupMenuBar()
     {
         _menu = new MenuStrip
@@ -265,7 +276,6 @@ public partial class MainForm : Form
         _menu.Items.Add(help);
         Controls.Add(_menu);
         _menu.BringToFront();
-        pnlTitle.BringToFront();
         StyleMenu();
     }
 
@@ -448,14 +458,10 @@ public partial class MainForm : Form
 
     private void ShowAbout()
     {
-        var yt = new StreamCapture().ResolveTool() ?? T("msg.notInstalled");
-        var ff = new StreamCapture().ResolveFfmpeg() ?? T("msg.notInstalled");
-        MessageBox.Show(this,
-            "ifredrix Download Manager 1.0.0\n" +
-            "HTTP segmented + Torrent + Streams + Tor\n\n" +
-            $"yt-dlp: {yt}\nffmpeg: {ff}\n" +
-            $"Tor: {TorProxy.Host}:{TorProxy.Port}",
-            T("msg.aboutTitle"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+        // A custom form, not MessageBox: the system dialog insists on the
+        // stock Windows icon and cannot show Theme.AppIcon.
+        using var dialog = new AboutForm();
+        dialog.ShowDialog(this);
     }
 
     private void ApplyTheme()
@@ -481,7 +487,6 @@ public partial class MainForm : Form
             statusStrip.Items.Add(_torStatus);
         }
 
-        pnlTitle.Invalidate();
         if (_downloadManager != null) RefreshDataGridView();
     }
 
@@ -529,7 +534,7 @@ public partial class MainForm : Form
     {
         if (_settings == null) return;
 
-        const int top = 76;
+        const int top = 40;
         const int margin = 12;
         const int gap = 8;
 
@@ -565,15 +570,8 @@ public partial class MainForm : Form
         txtUrl.Size = new Size(Math.Max(100, firstLeft - gap - txtUrl.Left), btnAddUrl.Height);
     }
 
-    private void SetupTitleBar()
+    private void SetupColumnHeaders()
     {
-        // The TrafficLightButton paints itself (outer ring, inner disc, top
-        // gloss, hover symbol). We just attach the tooltips here.
-        var tips = new ToolTip();
-        tips.SetToolTip(btnWinClose, T("tip.close"));
-        tips.SetToolTip(btnWinMin, T("tip.min"));
-        tips.SetToolTip(btnWinMax, T("tip.max"));
-
         // Make it obvious that the column headers can be grabbed to reorder.
         dataGridView.ColumnHeadersDefaultCellStyle.SelectionBackColor = Theme.GridHeaderBack;
         dataGridView.ColumnHeadersDefaultCellStyle.SelectionForeColor = Theme.GridHeaderText;
@@ -618,119 +616,17 @@ public partial class MainForm : Form
         };
     }
 
-    private void pnlTitle_Paint(object? sender, PaintEventArgs e)
-    {
-        using var pen = new Pen(Theme.Border);
-        e.Graphics.DrawLine(pen, 0, pnlTitle.Height - 1, pnlTitle.Width, pnlTitle.Height - 1);
-    }
 
-    private void pnlTitle_MouseDown(object? sender, MouseEventArgs e)
-    {
-        if (e.Button != MouseButtons.Left) return;
-        if (WindowState == FormWindowState.Maximized) return;
-
-        NativeMethods.ReleaseCapture();
-        NativeMethods.SendMessage(Handle, NativeMethods.WM_NCLBUTTONDOWN,
-            NativeMethods.HTCAPTION, 0);
-    }
-
-    private void pnlTitle_DoubleClick(object? sender, EventArgs e) => ToggleMaximize();
-
-    private void ToggleMaximize()
-    {
-        WindowState = WindowState == FormWindowState.Maximized
-            ? FormWindowState.Normal
-            : FormWindowState.Maximized;
-    }
-
-    private void btnWinClose_Click(object? sender, EventArgs e) => Close();
-
-    private void btnWinMin_Click(object? sender, EventArgs e)
-        => WindowState = FormWindowState.Minimized;
-
-    private void btnWinMax_Click(object? sender, EventArgs e) => ToggleMaximize();
-
-    // Without a native border the form can no longer be resized, so restore the
-    // sizing edges manually. The traffic-light strip is left alone so that
-    // dragging the window there still works.
-    protected override void WndProc(ref Message m)
-    {
-        const int WM_NCHITTEST = 0x0084;
-        const int HTCLIENT = 1;
-        const int HTLEFT = 10, HTRIGHT = 11, HTTOP = 12;
-        const int HTBOTTOM = 15, HTBOTTOMLEFT = 16, HTBOTTOMRIGHT = 17;
-
-        if (m.Msg == WM_NCHITTEST)
-        {
-            base.WndProc(ref m);
-
-            if (m.Result.ToInt32() == HTCLIENT && WindowState != FormWindowState.Maximized)
-            {
-                var lParam = m.LParam.ToInt64();
-                var pt = PointToClient(new Point(
-                    (short)(lParam & 0xFFFF),
-                    (short)((lParam >> 16) & 0xFFFF)));
-
-                const int edge = 8;
-                var w = ClientSize.Width;
-                var h = ClientSize.Height;
-                var overTrafficLights = pt.Y < pnlTitle.Height && pt.X <= 260;
-
-                if (!overTrafficLights)
-                {
-                    if (pt.X <= edge && pt.Y >= h - edge) m.Result = (IntPtr)HTBOTTOMLEFT;
-                    else if (pt.X >= w - edge && pt.Y >= h - edge) m.Result = (IntPtr)HTBOTTOMRIGHT;
-                    else if (pt.X <= edge) m.Result = (IntPtr)HTLEFT;
-                    else if (pt.X >= w - edge) m.Result = (IntPtr)HTRIGHT;
-                    else if (pt.Y >= h - edge) m.Result = (IntPtr)HTBOTTOM;
-                    else if (pt.Y <= 4) m.Result = (IntPtr)HTTOP;
-                }
-            }
-            return;
-        }
-
-        base.WndProc(ref m);
-    }
-
-    // A borderless window gets no native drop shadow, so ask for one.
-    private const int CS_DROPSHADOW = 0x00020000;
-
-    protected override CreateParams CreateParams
-    {
-        get
-        {
-            var cp = base.CreateParams;
-            cp.ClassStyle |= CS_DROPSHADOW;
-            return cp;
-        }
-    }
-
-    // A borderless form that is maximized would otherwise cover the taskbar.
-    private void SyncMaximizedBounds()
-    {
-        if (WindowState == FormWindowState.Maximized) return;
-        try
-        {
-            var working = Screen.FromControl(this).WorkingArea;
-            if (MaximizedBounds != working) MaximizedBounds = working;
-        }
-        catch
-        {
-            // No monitor attached - keep whatever bounds we already have.
-        }
-    }
 
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        SyncMaximizedBounds();
         LayoutTopToolbar();
     }
 
     protected override void OnMove(EventArgs e)
     {
         base.OnMove(e);
-        SyncMaximizedBounds();
     }
 
     private void InitializeDownloadManager()
@@ -1054,13 +950,13 @@ public partial class MainForm : Form
         // Done here rather than in the constructor: font autoscaling runs after
         // InitializeComponent and would overwrite the height.
         txtUrl.Height = btnAddUrl.Height;
-        SyncMaximizedBounds();
 
         _settings = AppSettings.Load();
         Localization.SetLang(_settings.Language);
         InitializeDownloadManager();
         SetupDataGridView();
-        _downloadManager.LoadHistory(AppSettings.HistoryFile);
+        var historyLoaded = _downloadManager.LoadHistory(AppSettings.HistoryFile);
+        AppLog.Info($"history loaded: {historyLoaded} entries");
         RefreshDataGridView();
         ApplyTheme();
         ApplyToolbar();
@@ -1069,7 +965,7 @@ public partial class MainForm : Form
 
         _tray = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = Theme.AppIcon,
             Visible = true,
             Text = "ifredrix Download Manager"
         };
@@ -1131,8 +1027,10 @@ public partial class MainForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        AppLog.Info($"closing ({e.CloseReason}): saving history");
         SaveGridColumns();
-        try { _downloadManager?.SaveHistory(AppSettings.HistoryFile); } catch { }
+        try { _downloadManager?.SaveHistory(AppSettings.HistoryFile); }
+        catch (Exception ex) { AppLog.Error("history save on close failed: " + ex); }
         _uiTimer.Stop();
         _uiTimer.Dispose();
         _clipboardTimer.Stop();
@@ -1167,6 +1065,7 @@ public partial class MainForm : Form
         }
 
         _settings?.Save();
+        AppLog.Info("closing complete");
         base.OnFormClosing(e);
     }
 
@@ -2149,7 +2048,7 @@ public partial class MainForm : Form
         row.Cells[0].Tag = task.Id;
         row.Cells[1].Value = task.SizeText;
         row.Cells[2].Value = task.ProgressPercentage;
-        row.Cells[3].Value = task.FormattedDownloadSpeed;
+        row.Cells[3].Value = task.FormattedSpeedDisplay;
         row.Cells[4].Value = task.FormattedTimeRemaining;
         row.Cells[5].Value = task.StatusText;
         row.Cells[6].Value = task.TypeText;
@@ -2168,7 +2067,7 @@ public partial class MainForm : Form
             row.Cells[0].Value = task.FileName;
             row.Cells[1].Value = task.SizeText;
             row.Cells[2].Value = task.ProgressPercentage;
-            row.Cells[3].Value = task.FormattedDownloadSpeed;
+            row.Cells[3].Value = task.FormattedSpeedDisplay;
             row.Cells[4].Value = task.FormattedTimeRemaining;
             row.Cells[5].Value = task.StatusText;
             row.Cells[6].Value = task.TypeText;
@@ -2258,7 +2157,9 @@ public partial class MainForm : Form
         var active = tasks.Count(t => t.Status == DownloadStatus.Downloading);
         var queued = tasks.Count(t => t.Status is DownloadStatus.Queued or DownloadStatus.Pending);
 
-        var down = tasks.Where(t => t.Status == DownloadStatus.Downloading).Sum(t => t.DownloadSpeed);
+        // Streams report percent/s on this counter, not bytes: keep them out
+        // of the byte total so the bar never mixes units.
+        var down = tasks.Where(t => t.Status == DownloadStatus.Downloading && !t.IsPercentProgress).Sum(t => t.DownloadSpeed);
         var up = tasks.Where(t => t.Status == DownloadStatus.Downloading).Sum(t => t.UploadSpeed);
 
         toolStripStatusLabel2.Text = string.Format(T("bar.speed"), FormatSpeed(down), FormatSpeed(up));
@@ -2369,14 +2270,3 @@ public partial class MainForm : Form
     }
 }
 
-internal static class NativeMethods
-{
-    public const int WM_NCLBUTTONDOWN = 0x00A1;
-    public const int HTCAPTION = 0x0002;
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    public static extern bool ReleaseCapture();
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    public static extern IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
-}

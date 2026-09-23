@@ -11,6 +11,9 @@ Inggris.
 - Autodownload dari browser apa pun (Chrome, Edge, Opera, Brave, Vivaldi,
   Firefox): klik unduhan diambil alih aplikasi; bila aplikasi tertutup,
   unduhan tetap berjalan di browser
+- Pilih kualitas langsung di panel browser (resolusi, ukuran nyata, audio
+  saja) — unduhan YouTube selalu berakhir sebagai **satu file ter-merge**
+  (video+audio) berkat ffmpeg otomatis
 - Tangkap tautan otomatis dari clipboard (URL biasa, `magnet:`, `.torrent`, YouTube/HLS)
 - Torrent & stream (yt-dlp + ffmpeg, auto-fetch sekali saat dibutuhkan)
 - Proxy (None/System/Custom + auth), cookie, login situs per-host (Basic auth)

@@ -178,11 +178,16 @@ public sealed class PropertiesForm : Form
         _lblCategory.Text = task.CategoryText;
         _lblStatus.Text = task.StatusText + (string.IsNullOrEmpty(task.ErrorMessage) ? "" : $" ({task.ErrorMessage})");
         _lblSize.Text = task.SizeText;
-        _lblDownloaded.Text = task.FileSize > 0
-            ? string.Format(T("pr.of"), task.FormattedDownloadedBytes, task.FormattedFileSize, task.ProgressPercentage)
-            : task.FormattedDownloadedBytes;
+        _lblDownloaded.Text = task.IsPercentProgress
+            ? task.ProgressPercentage.ToString("0.0") + "%"
+            : task.FileSize > 0
+                ? string.Format(T("pr.of"), task.FormattedDownloadedBytes, task.FormattedFileSize, task.ProgressPercentage)
+                : task.FormattedDownloadedBytes;
         _progress.Value = (int)Math.Clamp(Math.Round(task.ProgressPercentage * 10), 0, 1000);
-        _lblSpeed.Text = string.Format(T("pr.downUp"), task.FormattedDownloadSpeed, task.FormattedUploadSpeed);
+        // Only torrents report both directions; streams report percent/s.
+        _lblSpeed.Text = task.Type == DownloadType.Torrent
+            ? string.Format(T("pr.downUp"), task.FormattedDownloadSpeed, task.FormattedUploadSpeed)
+            : task.FormattedSpeedDisplay;
         _lblLimit.Text = task.SpeedLimitBps > 0
             ? string.Format(T("pr.limitThis"), task.SpeedLimitBps / 1024.0)
             : T("pr.limitGlobal");
@@ -190,7 +195,7 @@ public sealed class PropertiesForm : Form
         _lblCreated.Text = task.FormattedCreatedAt;
         _lblCompleted.Text = task.CompletedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? T("pr.none");
         _lblTor.Text = task.UseTor ? T("pr.yes") : T("pr.no");
-        _lblResume.Text = task.SupportsRange ? T("pr.yes") : T("pr.no");
+        _lblResume.Text = task.IsPercentProgress ? "—" : task.SupportsRange ? T("pr.yes") : T("pr.no");
         _lblError.Text = string.IsNullOrEmpty(task.ErrorMessage) ? T("pr.none") : task.ErrorMessage;
     }
 }

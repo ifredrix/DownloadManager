@@ -25,6 +25,11 @@ public sealed class LocalCaptureServer : IDisposable
         PropertyNameCaseInsensitive = true
     };
 
+    private static readonly JsonSerializerOptions JsonOutOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     private readonly DownloadManager _manager;
     private HttpListener? _listener;
     private readonly CancellationTokenSource _cts = new();
@@ -107,6 +112,10 @@ public sealed class LocalCaptureServer : IDisposable
             {
                 case "/capture":
                     await HandleCaptureAsync(ctx, source).ConfigureAwait(false);
+                    break;
+
+                case "/formats":
+                    await HandleFormatsAsync(ctx, source).ConfigureAwait(false);
                     break;
 
                 case "/capture-file":
@@ -208,6 +217,48 @@ public sealed class LocalCaptureServer : IDisposable
         }
     }
 
+    /// <summary>POST {"url":...} -> quality/size list (yt-dlp -F) for the panel.</summary>
+    private async Task HandleFormatsAsync(HttpListenerContext ctx, string source)
+    {
+        if (ctx.Request.HttpMethod != "POST")
+        {
+            await WriteTextAsync(ctx, 405, "POST only").ConfigureAwait(false);
+            return;
+        }
+
+        string body;
+        using (var reader = new StreamReader(ctx.Request.InputStream, Encoding.UTF8))
+        {
+            body = await reader.ReadToEndAsync().ConfigureAwait(false);
+        }
+
+        CapturePayload? payload = null;
+        try { payload = JsonSerializer.Deserialize<CapturePayload>(body, JsonOpts); } catch { }
+
+        if (payload == null || string.IsNullOrWhiteSpace(payload.Url) ||
+            !Uri.TryCreate(payload.Url, UriKind.Absolute, out _))
+        {
+            await WriteTextAsync(ctx, 400, "invalid payload").ConfigureAwait(false);
+            return;
+        }
+
+        List<StreamChoice> choices;
+        try
+        {
+            choices = await _manager.ListStreamChoicesAsync(payload.Url, _cts.Token, payload.Referer)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            await WriteTextAsync(ctx, 502, "failed: " + ex.Message).ConfigureAwait(false);
+            return;
+        }
+
+        _heartbeats[source] = DateTime.UtcNow;
+        var json = JsonSerializer.Serialize(new { ok = true, formats = choices }, JsonOutOpts);
+        await WriteTextAsync(ctx, 200, json, "application/json").ConfigureAwait(false);
+    }
+
     private async Task HandleCaptureAsync(HttpListenerContext ctx, string source)
     {
         if (ctx.Request.HttpMethod != "POST")
@@ -238,10 +289,13 @@ public sealed class LocalCaptureServer : IDisposable
             return;
         }
 
-        // Same URL already active in the app -> answer OK idempotently so the
-        // browser side cancels its copy instead of downloading a duplicate.
+        // Same URL *and* format already active -> answer OK idempotently so
+        // the browser side cancels its copy instead of downloading a
+        // duplicate. A different picked quality is a different task.
+        var wantedFormat = (payload.Format ?? string.Empty).Trim();
         var alreadyActive = _manager.GetAllTasks().Any(t =>
             string.Equals(t.Url, payload.Url, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(t.FormatId, wantedFormat, StringComparison.OrdinalIgnoreCase) &&
             t.Status is DownloadStatus.Pending or DownloadStatus.Queued or
                 DownloadStatus.Downloading or DownloadStatus.Paused);
         if (alreadyActive)
@@ -259,11 +313,11 @@ public sealed class LocalCaptureServer : IDisposable
         {
             if (StreamCapture.IsStreamingUrl(payload.Url) || StreamCapture.IsPlaylistUrl(payload.Url))
             {
-                await _manager.AddStreamAsync(payload.Url).ConfigureAwait(false);
+                await _manager.AddStreamAsync(payload.Url, wantedFormat, payload.Referer).ConfigureAwait(false);
             }
             else
             {
-                await _manager.AddDownloadAsync(payload.Url, DownloadType.Regular)
+                await _manager.AddDownloadAsync(payload.Url, DownloadType.Regular, payload.Referer)
                     .ConfigureAwait(false);
             }
         }
@@ -313,6 +367,17 @@ public sealed class LocalCaptureServer : IDisposable
 
         [JsonPropertyName("source")]
         public string Source { get; set; } = "browser";
+
+        // Optional yt-dlp format selector picked in the browser panel
+        // (e.g. "399+140"); empty = automatic best.
+        [JsonPropertyName("format")]
+        public string Format { get; set; } = string.Empty;
+
+        // Page/iframe URL the media was playing on; forwarded as yt-dlp
+        // --referer / HTTP Referer so referer-gated hosts accept the request.
+        // Optional: older extensions omit it (= no context, old behaviour).
+        [JsonPropertyName("referer")]
+        public string Referer { get; set; } = string.Empty;
     }
 
     public sealed class CapturedLink

@@ -29,6 +29,7 @@ public sealed class LinkPickerForm : Form
         ForeColor = Theme.Text;
         Font = new Font("Segoe UI", 9F);
         ShowInTaskbar = false;
+        Icon = Theme.AppIcon;
 
         var hint = new Label
         {

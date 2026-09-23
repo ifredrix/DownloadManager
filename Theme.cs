@@ -192,14 +192,38 @@ public static class Theme
         _ => Surface
     };
 
+    // ------------------------------------------------------------- icon ----
+
+    /// <summary>The application icon (app.ico, embedded in the exe) applied to
+    /// window title bars instead of the default WinForms glyph.</summary>
+    public static Icon AppIcon { get; } = LoadAppIcon();
+
+    private static Icon LoadAppIcon()
+    {
+        try
+        {
+            return Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
+        }
+        catch
+        {
+            return SystemIcons.Application;
+        }
+    }
+
     // ------------------------------------------------------------ styling ----
 
     /// <summary>
     /// Recolors a form and its children for the current skin. Buttons tagged
-    /// "primary" get the accent; <see cref="TrafficLightButton"/> is skipped.
+    /// "primary" get the accent; windows get the application icon.
     /// </summary>
     public static void StyleForm(Control root)
     {
+        // Windows get the application icon instead of the default WinForms glyph.
+        // NB: Form.Icon never reads as null - WinForms returns its stock default
+        // - so assign unconditionally; a null-guard silently kept the old
+        // WinForms icon on every window.
+        if (root is Form form) form.Icon = AppIcon;
+
         root.BackColor = WindowBack;
         root.ForeColor = Text;
         StyleChildren(root);
@@ -211,8 +235,6 @@ public static class Theme
         {
             switch (c)
             {
-                case TrafficLightButton:
-                    break;
                 case Button b:
                     if (Equals(b.Tag, "primary"))
                     {

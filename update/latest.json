@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0",
-  "url": "https://github.com/ifredrix/DownloadManager/releases/download/v1.0.0/ifredrixDownloadManager-1.0.0-win-x64.zip",
-  "sha256": "72f8a785a9a919ce889e9a55c748f8337f04db06e5c47d7ac23bd4f03a67dd35",
-  "notes": "ifredrix Download Manager 1.0.0 - first public release (win-x64, self-contained)."
+  "version": "0.1.0-beta",
+  "url": "https://sourceforge.net/projects/SLUG-PLACEHOLDER/files/ifredrixDownloadManager-0.1.0-beta-x64.msi/download",
+  "sha256": "94ee233ac37ced88877e6fd63a59dd6923c18d92a3bade20cd203095b7e170ee",
+  "notes": "ifredrix Download Manager 0.1.0-beta - panel referer/URL unwrap fix, MIT installer. URL is a placeholder until the SourceForge slug is registered."
 }

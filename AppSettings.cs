@@ -13,28 +13,13 @@ public sealed class AppSettings
     };
 
     /// <summary>
-    /// Where finished downloads are written. Defaults to D:\master when that drive
-    /// is available, otherwise falls back to the user's Downloads folder.
+    /// Where finished downloads are written. Defaults to the per-user Downloads
+    /// folder; only an explicit user setting overrides this.
     /// </summary>
     public string DownloadPath { get; set; } = DefaultDownloadPath();
 
-    private static string DefaultDownloadPath()
-    {
-        const string preferred = @"D:\master";
-        try
-        {
-            if (Directory.Exists(preferred))
-            {
-                return preferred;
-            }
-        }
-        catch
-        {
-            // Fall through to the per-user default.
-        }
-
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-    }
+    private static string DefaultDownloadPath() =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
 
     public int MaxConcurrentDownloads { get; set; } = 3;
     public int ConnectionsPerDownload { get; set; } = DownloadManager.DefaultConnections;
@@ -168,12 +153,50 @@ public sealed class AppSettings
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Fall back to defaults.
+            // A corrupt file used to reset everything silently (download path,
+            // Tor mode). Repair from the .bak instead; when that fails the
+            // broken file is only renamed, never deleted.
+            AppLog.Error("settings load failed: " + ex.Message);
+            var repaired = TryRepairFromBackup();
+            if (repaired != null) return repaired;
+            PreserveCorruptSettingsFile();
+            AppLog.Error("settings unreadable and no usable backup: original kept as .corrupt, starting with defaults");
         }
 
         return new AppSettings();
+    }
+
+    private static AppSettings? TryRepairFromBackup()
+    {
+        try
+        {
+            var bak = SettingsFile + ".bak";
+            if (!File.Exists(bak)) return null;
+            var loaded = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(bak));
+            if (loaded == null) return null;
+            File.Copy(bak, SettingsFile, true);
+            AppLog.Info("settings repaired from settings.json.bak");
+            return loaded;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("settings backup unusable: " + ex.Message);
+            return null;
+        }
+    }
+
+    private static void PreserveCorruptSettingsFile()
+    {
+        try
+        {
+            if (File.Exists(SettingsFile)) File.Move(SettingsFile, SettingsFile + ".corrupt", true);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("preserving corrupt settings failed: " + ex.Message);
+        }
     }
 
     public void Save()
@@ -181,11 +204,18 @@ public sealed class AppSettings
         try
         {
             Directory.CreateDirectory(SettingsDirectory);
+            // Keep the last good file: Load repairs from it if the new copy
+            // ever turns up unreadable.
+            if (File.Exists(SettingsFile))
+            {
+                try { File.Copy(SettingsFile, SettingsFile + ".bak", true); } catch { }
+            }
             File.WriteAllText(SettingsFile, JsonSerializer.Serialize(this, SerializerOptions));
         }
-        catch
+        catch (Exception ex)
         {
             // Settings are best-effort.
+            AppLog.Error("settings save failed: " + ex);
         }
     }
 }

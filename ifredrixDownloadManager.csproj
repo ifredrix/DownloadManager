@@ -8,7 +8,7 @@
     <AssemblyName>ifredrixDownloadManager</AssemblyName>
     <Product>ifredrix Download Manager</Product>
     <Company>ifredrix</Company>
-    <Version>1.0.0</Version>
+    <Version>0.1.0-beta</Version>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>app.ico</ApplicationIcon>

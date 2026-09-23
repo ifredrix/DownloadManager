@@ -36,6 +36,45 @@ public static class TorProxy
         }
     }
 
+    /// <summary>
+    /// True for loopback/LAN targets a Tor exit node can never reach (it
+    /// would dial its own local network, which fails with SOCKS5 0x01 or
+    /// hits the wrong network entirely). Only IP literals and "localhost"
+    /// count - anything else would need a DNS lookup, which is exactly what
+    /// route-all exists to avoid. A LAN hostname therefore stays on Tor and
+    /// fails loudly instead of silently leaking a local lookup.
+    /// </summary>
+    public static bool IsLocalUrl(Uri uri)
+    {
+        try
+        {
+            if (uri.IsLoopback) return true;
+            if (string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (!IPAddress.TryParse(uri.Host, out var ip)) return false;
+
+            if (IPAddress.IsLoopback(ip)) return true;
+            if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+
+            if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+            {
+                if (ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal) return true;
+                var v6 = ip.GetAddressBytes();
+                return (v6[0] & 0xFE) == 0xFC; // fc00::/7 unique-local
+            }
+
+            var b = ip.GetAddressBytes();
+            return b[0] == 10                                // 10.0.0.0/8
+                || (b[0] == 172 && b[1] >= 16 && b[1] <= 31) // 172.16.0.0/12
+                || (b[0] == 192 && b[1] == 168)              // 192.168.0.0/16
+                || (b[0] == 169 && b[1] == 254);             // link-local
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>Quick liveness check (TCP connect, ~1.5 s budget).</summary>
     public static async Task<bool> IsAvailableAsync(string? host = null, int? port = null)
     {

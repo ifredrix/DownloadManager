@@ -137,7 +137,7 @@ partial class SettingsForm
         nudConnections.Name = "nudConnections";
         nudConnections.Size = new Size(150, 23);
         nudConnections.TabIndex = 6;
-        nudConnections.Value = new decimal(new int[] { 20, 0, 0, 0 });
+        nudConnections.Value = new decimal(new int[] { 32, 0, 0, 0 });
         //
         // lblSpeedLimit
         //

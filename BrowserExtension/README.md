@@ -39,6 +39,11 @@ URLs to the internet.
   link, the download is resumed in the browser, so nothing is ever lost.
   Duplicates of a link that is already queued are recognized and answered
   idempotently (no double file).
+* **Quality picker over videos** — the floating button over a video opens
+  the format list straight from the app (yt-dlp): one row per resolution
+  with container and real size (video+audio summed), plus audio-only
+  tracks. Picking a row sends the exact selector, so YouTube downloads
+  arrive as **one merged file**, never as separate audio/video halves.
 * **On startup** the extension sends a heartbeat (`GET /heartbeat?source=…`)
   to the desktop app and then once every 10 seconds.
 * **Video panel** (`panel.js` content script) watches for `<video>`

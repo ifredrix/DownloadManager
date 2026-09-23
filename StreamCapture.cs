@@ -15,11 +15,21 @@ namespace IfredrixDownloadManager;
 /// </summary>
 public sealed class StreamCapture
 {
-    /// <summary>Auto format: best MP4 video + audio, merged to MP4 (needs ffmpeg).</summary>
-    public const string BestMp4Format = "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b";
+    /// <summary>Auto format: forces 4K/8K video + preferred audio when the source has it ("jika bisa"), merged to MP4 (needs ffmpeg).</summary>
+    // Prefer 4K/8K video (any container) + preferred audio when the source has
+    // it ("jika bisa"), then fall back to the previous best-MP4 chain. "+" forms
+    // are merged by yt-dlp with --merge-output-format mp4 (see RunDownloadAsync).
+    public const string BestMp4Format =
+        "bv*[height>=2160]+ba[ext=m4a]/bv*[height>=2160]+ba/bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b";
 
     /// <summary>Fallback when ffmpeg is missing: best single MP4 file, no merge.</summary>
     public const string FallbackMp4Format = "b[ext=mp4]/b/best";
+
+    /// <summary>Optional `--referer` argument carrying the page/iframe context.</summary>
+    private static string RefererArg(string referer) =>
+        string.IsNullOrWhiteSpace(referer)
+            ? string.Empty
+            : "--referer \"" + referer.Replace("\"", string.Empty) + "\" ";
 
     /// <summary>Per-app bundled copy, fetched on first use (no separate install).</summary>
     public static string BundledToolPath => Path.Combine(
@@ -227,6 +237,21 @@ public sealed class StreamCapture
         return _ffmpegPath;
     }
 
+    /// <summary>Mirrors for the ffmpeg build; the first one that answers wins.
+    /// Measured on the target connection: BtbN ~0.9 MB/s vs gyan ~0.1 MB/s,
+    /// so GitHub is the primary and gyan.dev the fallback.</summary>
+    public static readonly string[] FfmpegDownloadUrls =
+    {
+        "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip",
+        "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+    };
+
+    private bool _ffmpegFetchFailed;
+
+    /// <summary>True when a fetch already failed this session, so every
+    /// queued task does not burn bandwidth trying again.</summary>
+    public bool FfmpegUnavailable => _ffmpegFetchFailed;
+
     /// <summary>
     /// Returns a usable ffmpeg path, downloading the bundled copy on first use.
     /// Needed for video+audio merges and TS -&gt; MP4 remux.
@@ -236,41 +261,72 @@ public sealed class StreamCapture
     {
         var existing = ResolveFfmpeg();
         if (existing != null) return existing;
+        if (_ffmpegFetchFailed)
+        {
+            throw new InvalidOperationException("ffmpeg is not available on this machine.");
+        }
 
         var toolsDir = Path.GetDirectoryName(BundledFfmpegPath)!;
         Directory.CreateDirectory(toolsDir);
 
         var zip = Path.Combine(toolsDir, "ffmpeg.zip");
         var extractDir = Path.Combine(toolsDir, "ffmpeg-dl");
-        try
+        Exception? last = null;
+
+        foreach (var url in FfmpegDownloadUrls)
         {
-            await DownloadToFileAsync(FfmpegDownloadUrl, zip, progress, ct).ConfigureAwait(false);
+            try
+            {
+                await DownloadToFileAsync(url, zip, progress, ct).ConfigureAwait(false);
 
-            if (Directory.Exists(extractDir)) Directory.Delete(extractDir, true);
-            System.IO.Compression.ZipFile.ExtractToDirectory(zip, extractDir);
+                if (Directory.Exists(extractDir)) Directory.Delete(extractDir, true);
+                System.IO.Compression.ZipFile.ExtractToDirectory(zip, extractDir);
 
-            var exe = Directory.EnumerateFiles(extractDir, "ffmpeg.exe", SearchOption.AllDirectories)
-                .OrderByDescending(f => new FileInfo(f).Length)
-                .FirstOrDefault();
-            if (exe == null) throw new InvalidOperationException("ffmpeg.exe not found in archive.");
+                var exe = Directory.EnumerateFiles(extractDir, "ffmpeg.exe", SearchOption.AllDirectories)
+                    .OrderByDescending(f => new FileInfo(f).Length)
+                    .FirstOrDefault();
+                if (exe == null) throw new InvalidOperationException("ffmpeg.exe not found in archive.");
 
-            if (File.Exists(BundledFfmpegPath)) File.Delete(BundledFfmpegPath);
-            File.Move(exe, BundledFfmpegPath);
+                if (File.Exists(BundledFfmpegPath)) File.Delete(BundledFfmpegPath);
+                File.Move(exe, BundledFfmpegPath);
+
+                // ffprobe rides along; yt-dlp probes media with it when present.
+                var ffprobe = Directory.EnumerateFiles(extractDir, "ffprobe.exe", SearchOption.AllDirectories)
+                    .OrderByDescending(f => new FileInfo(f).Length)
+                    .FirstOrDefault();
+                if (ffprobe != null)
+                {
+                    try
+                    {
+                        File.Copy(ffprobe, Path.Combine(toolsDir, "ffprobe.exe"), true);
+                    }
+                    catch { /* best effort */ }
+                }
+
+                _ffmpegProbed = false;
+                _ffmpegPath = null;
+                _ffmpegFetchFailed = false;
+                return ResolveFfmpeg()
+                    ?? throw new InvalidOperationException("Could not install ffmpeg.");
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                last = ex;
+            }
+            finally
+            {
+                try { if (File.Exists(zip)) File.Delete(zip); } catch { }
+                try { if (Directory.Exists(extractDir)) Directory.Delete(extractDir, true); } catch { }
+            }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            throw new InvalidOperationException("Could not fetch ffmpeg: " + ex.Message);
-        }
-        finally
-        {
-            try { if (File.Exists(zip)) File.Delete(zip); } catch { }
-            try { if (Directory.Exists(extractDir)) Directory.Delete(extractDir, true); } catch { }
-        }
 
-        _ffmpegProbed = false;
-        _ffmpegPath = null;
-        return await Task.FromResult(ResolveFfmpeg()
-            ?? throw new InvalidOperationException("Could not install ffmpeg."));
+        _ffmpegFetchFailed = true;
+        throw new InvalidOperationException(
+            "Could not fetch ffmpeg: " + (last?.Message ?? "no mirror answered."));
     }
 
     private static string? WhereOnPath(string exe)
@@ -298,7 +354,8 @@ public sealed class StreamCapture
         }
     }
 
-    public async Task<List<StreamFormat>> ListFormatsAsync(string url, CancellationToken ct = default)
+    public async Task<List<StreamFormat>> ListFormatsAsync(
+        string url, CancellationToken ct = default, string referer = "")
     {
         var tool = ResolveTool();
         if (tool == null) throw new FileNotFoundException(
@@ -308,7 +365,7 @@ public sealed class StreamCapture
         using var p = Process.Start(new ProcessStartInfo
         {
             FileName = tool,
-            Arguments = $"--no-warnings --no-playlist -F \"{url}\"",
+            Arguments = $"--no-warnings --no-playlist {RefererArg(referer)}-F \"{url}\"",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -320,6 +377,16 @@ public sealed class StreamCapture
         p.BeginOutputReadLine();
         p.BeginErrorReadLine();
         await p.WaitForExitAsync(ct).ConfigureAwait(false);
+
+        // Honest failure: a broken/404 link must surface the real error
+        // instead of an empty list that looks like "no formats exist".
+        if (p.ExitCode != 0)
+        {
+            var tail = string.Join(Environment.NewLine, output.TakeLast(6));
+            throw new InvalidOperationException(
+                $"yt-dlp failed (exit {p.ExitCode})." +
+                (string.IsNullOrWhiteSpace(tail) ? string.Empty : Environment.NewLine + tail));
+        }
 
         return ParseFormats(output);
     }
@@ -345,9 +412,15 @@ public sealed class StreamCapture
             var firstSpace = line.IndexOf(' ');
             if (firstSpace <= 0) continue;
             var id = line[..firstSpace];
-            if (!Regex.IsMatch(id, @"^\d+[a-z]?$")) continue;
+            // Numeric yt-dlp ids ("399", "251a") and generic single-word ids
+            // ("mp4" for direct file links) are both valid format selectors.
+            if (!Regex.IsMatch(id, @"^(\d+[a-z]?|[a-z][a-z0-9._-]*)$",
+                    RegexOptions.IgnoreCase)) continue;
 
-            var rest = line[(firstSpace + 1)..];
+            // Trim the column padding: short IDs leave several spaces before
+            // EXT, and a leading space made the regex below fail (ext became
+            // "?" and rows displayed junk like "?+mp4").
+            var rest = line[(firstSpace + 1)..].TrimStart();
 
             var extMatch = Regex.Match(rest, @"^(\S+)\s+(.+)$");
             var ext = extMatch.Success ? extMatch.Groups[1].Value : "?";
@@ -383,10 +456,149 @@ public sealed class StreamCapture
         return result;
     }
 
+    /// <summary>
+    /// Builds the selectable quality list for the browser panel: one combined
+    /// video+audio choice per resolution (needs ffmpeg to merge) plus the
+    /// best audio-only tracks. Sizes are summed so the number shown is what
+    /// the merged file will actually weigh.
+    /// </summary>
+    public async Task<List<StreamChoice>> ListChoicesAsync(
+        string url, CancellationToken ct = default, string referer = "")
+    {
+        var formats = await ListFormatsAsync(url, ct, referer).ConfigureAwait(false);
+        var choices = new List<StreamChoice>();
+        if (formats.Count == 0) return choices;
+
+        var audios = formats.Where(f => f.IsAudio)
+            .OrderByDescending(f => ParseSizeBytes(f.Size)).ToList();
+
+        // Keep containers consistent: mp4 video marries m4a (aac), webm
+        // video marries webm/opus - the merged file then plays everywhere.
+        StreamFormat? AudioFor(StreamFormat video)
+        {
+            if (audios.Count == 0) return null;
+            var want = string.Equals(video.Extension, "mp4", StringComparison.OrdinalIgnoreCase)
+                ? "m4a" : "webm";
+            return audios.FirstOrDefault(a =>
+                       string.Equals(a.Extension, want, StringComparison.OrdinalIgnoreCase))
+                   ?? audios[0];
+        }
+
+        foreach (var group in formats.Where(f => f.IsVideo && f.Height > 0)
+                     .GroupBy(f => f.Height)
+                     .OrderByDescending(g => g.Key))
+        {
+            var v = group
+                .OrderBy(f => string.Equals(f.Extension, "mp4", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenByDescending(f => f.Fps)
+                .ThenByDescending(f => ParseSizeBytes(f.Size))
+                .First();
+
+            var audio = AudioFor(v);
+            var id = v.Id;
+            // "?" = EXT column was not recognised for that row (unknown).
+            var ext = v.Extension == "?" ? string.Empty : v.Extension;
+            var size = ParseSizeBytes(v.Size);
+            if (audio != null)
+            {
+                id += "+" + audio.Id;
+                var audioExt = audio.Extension == "?" ? string.Empty : audio.Extension;
+                if (ext.Length == 0)
+                {
+                    ext = audioExt;
+                }
+                else if (audioExt.Length > 0 &&
+                         !ext.Equals(audioExt, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Different containers (mp4+m4a): show both. Equal ones
+                    // (mp4+mp4) would just be noise on the panel's sub-line.
+                    ext += "+" + audioExt;
+                }
+                var audioSize = ParseSizeBytes(audio.Size);
+                if (size > 0 && audioSize > 0) size += audioSize;
+            }
+
+            choices.Add(new StreamChoice
+            {
+                Id = id,
+                Label = v.Fps > 30 ? $"{v.Height}p{v.Fps}" : $"{v.Height}p",
+                Ext = ext,
+                SizeBytes = size,
+                Kind = "video"
+            });
+        }
+
+        // Resolution-less rows still matter (direct files, muxed streams).
+        if (choices.Count == 0)
+        {
+            foreach (var f in formats.Where(f => !f.IsAudio && f.Height == 0).Take(3))
+            {
+                choices.Add(new StreamChoice
+                {
+                    Id = f.Id,
+                    Label = f.Extension,
+                    Ext = f.Extension,
+                    SizeBytes = ParseSizeBytes(f.Size),
+                    Kind = "video"
+                });
+            }
+        }
+
+        foreach (var a in audios.Take(2))
+        {
+            choices.Add(new StreamChoice
+            {
+                Id = a.Id,
+                Label = string.Empty,
+                Ext = a.Extension,
+                SizeBytes = ParseSizeBytes(a.Size),
+                Kind = "audio"
+            });
+        }
+
+        return choices;
+    }
+
+    /// <summary>Parses yt-dlp size strings ("177.98MiB") to bytes. 0 = unknown.</summary>
+    public static long ParseSizeBytes(string? size)
+    {
+        if (string.IsNullOrWhiteSpace(size)) return 0;
+        var m = Regex.Match(size.Trim(), @"^([\d.]+)\s*([KMGTP]i?B)$",
+            RegexOptions.IgnoreCase);
+        if (!m.Success) return 0;
+        if (!double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var value) || value <= 0)
+        {
+            return 0;
+        }
+        var unit = m.Groups[2].Value.ToUpperInvariant();
+        var exponent = unit.StartsWith("K") ? 1 : unit.StartsWith("M") ? 2 :
+                       unit.StartsWith("G") ? 3 : unit.StartsWith("T") ? 4 :
+                       unit.StartsWith("P") ? 5 : 0;
+        return (long)(value * Math.Pow(1024, exponent));
+    }
+
+    /// <summary>Deletes raw ".fNNN" track files a failed merge left behind.</summary>
+    public static int PurgeFragments(string directory)
+    {
+        var removed = 0;
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(directory))
+            {
+                if (!Regex.IsMatch(Path.GetFileName(file), @"\.[fF]\d+\.\w+$")) continue;
+                try { File.Delete(file); removed++; } catch { /* locked */ }
+            }
+        }
+        catch { /* folder gone */ }
+        return removed;
+    }
+
     /// <summary>Downloads the chosen format. Returns the path of the produced file.</summary>
     public async Task<string?> DownloadAsync(
         string url, string formatId, string destinationDirectory,
-        IProgress<StreamProgress>? progress, CancellationToken ct, long speedLimitBps = 0)
+        IProgress<StreamProgress>? progress, CancellationToken ct, long speedLimitBps = 0,
+        string referer = "")
     {
         var tool = ResolveTool();
         if (tool == null) throw new FileNotFoundException(
@@ -394,7 +606,17 @@ public sealed class StreamCapture
 
         Directory.CreateDirectory(destinationDirectory);
 
-        var title = await ProbeTitleAsync(url, ct).ConfigureAwait(false);
+        // Combined video+audio selectors must fail fast when ffmpeg is
+        // missing: that lets the caller fetch ffmpeg and retry (or fall back
+        // to a single file) *before* two separate track files get downloaded
+        // and mistaken for a finished download.
+        if (formatId.Contains('+') && ResolveFfmpeg() == null)
+        {
+            throw new InvalidOperationException(
+                "ffmpeg is required to merge video and audio.");
+        }
+
+        var title = await ProbeTitleAsync(url, ct, referer).ConfigureAwait(false);
         var safeTitle = Sanitize(title);
 
         // Merge flag only makes sense for combined (video+audio) selectors;
@@ -411,7 +633,7 @@ public sealed class StreamCapture
         using var p = Process.Start(new ProcessStartInfo
         {
             FileName = tool,
-            Arguments = $"--no-warnings --no-playlist --continue -f \"{formatId}\" " +
+            Arguments = $"--no-warnings --no-playlist {RefererArg(referer)}--continue -f \"{formatId}\" " +
                         $"-P \"{destinationDirectory}\" " +
                         mergeArgs + ffmpegArgs + rateArgs +
                         $"-o \"%(title).150s [{Sanitize(formatId)}].%(ext)s\" " +
@@ -467,12 +689,32 @@ public sealed class StreamCapture
 
         await p.WaitForExitAsync(ct).ConfigureAwait(false);
 
-        if (p.ExitCode != 0 && string.IsNullOrEmpty(lastPath) &&
-            System.Text.RegularExpressions.Regex.IsMatch(formatId, @"^[\w-]+$"))
+        string FailureTail()
         {
-            // Try to find the file in the destination folder by the chosen format id.
-            lastPath = Directory.EnumerateFiles(destinationDirectory, $"*[{formatId}]*")
-                .OrderByDescending(f => new FileInfo(f).Length).FirstOrDefault();
+            lock (logTail)
+            {
+                return string.Join(Environment.NewLine, logTail.TakeLast(8));
+            }
+        }
+
+        static bool IsTrackFragment(string path) =>
+            Regex.IsMatch(Path.GetFileName(path), @"\.[fF]\d+\.\w+$");
+
+        // A non-zero exit is a failed download, full stop. Accepting whatever
+        // file happens to be the biggest (the old behaviour) reported merged
+        // failures as "Completed" while leaving a video-only fragment behind.
+        if (p.ExitCode != 0)
+        {
+            var tail = FailureTail();
+            if (formatId.Contains('+') &&
+                (tail.Contains("ffmpeg", StringComparison.OrdinalIgnoreCase) ||
+                 tail.Contains("merg", StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException(
+                    "ffmpeg is required to merge video and audio." + Environment.NewLine + tail);
+            }
+            throw new InvalidOperationException(
+                $"yt-dlp failed (exit {p.ExitCode})." + Environment.NewLine + tail);
         }
 
         if (string.IsNullOrEmpty(lastPath))
@@ -480,16 +722,24 @@ public sealed class StreamCapture
             lastPath = Directory.EnumerateFiles(destinationDirectory)
                 .Where(f => !f.EndsWith(".part", StringComparison.OrdinalIgnoreCase) &&
                             !f.EndsWith(".ytdl", StringComparison.OrdinalIgnoreCase) &&
-                            !f.EndsWith(".temp", StringComparison.OrdinalIgnoreCase))
+                            !f.EndsWith(".temp", StringComparison.OrdinalIgnoreCase) &&
+                            !IsTrackFragment(f))
                 .OrderByDescending(f => new FileInfo(f).Length).FirstOrDefault();
         }
 
         if (string.IsNullOrEmpty(lastPath) || !File.Exists(lastPath))
         {
-            var tail = string.Join(Environment.NewLine, logTail.TakeLast(8));
             throw new InvalidOperationException(
-                $"yt-dlp failed (exit {p.ExitCode})." +
-                (string.IsNullOrWhiteSpace(tail) ? string.Empty : Environment.NewLine + tail));
+                "yt-dlp finished but produced no file." + Environment.NewLine + FailureTail());
+        }
+
+        // e.g. ".f399.mp4" + ".f140.m4a" means the merger never ran: never
+        // report a half-finished download as completed.
+        if (IsTrackFragment(lastPath))
+        {
+            throw new InvalidOperationException(
+                "yt-dlp left separate video/audio track files; the merge did not run: " +
+                Path.GetFileName(lastPath));
         }
 
         _ = safeTitle; // kept for future template tweaks
@@ -511,10 +761,12 @@ public sealed class StreamCapture
         return $"{Math.Max(1, bytesPerSecond / 1024)}K";
     }
 
-    public Task<string> GetTitleAsync(string url, CancellationToken ct = default)
-        => ProbeTitleAsync(url, ct);
+    public Task<string> GetTitleAsync(
+        string url, CancellationToken ct = default, string referer = "")
+        => ProbeTitleAsync(url, ct, referer);
 
-    private async Task<string> ProbeTitleAsync(string url, CancellationToken ct)
+    private async Task<string> ProbeTitleAsync(
+        string url, CancellationToken ct, string referer = "")
     {
         var tool = ResolveTool();
         try
@@ -522,7 +774,7 @@ public sealed class StreamCapture
             using var p = Process.Start(new ProcessStartInfo
             {
                 FileName = tool!,
-                Arguments = $"--no-warnings --no-playlist --print title -- \"{url}\"",
+                Arguments = $"--no-warnings --no-playlist {RefererArg(referer)}--print title -- \"{url}\"",
                 RedirectStandardOutput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
@@ -545,6 +797,25 @@ public sealed class StreamCapture
             name = name.Replace(c, '_');
         return name.Trim().TrimEnd('.');
     }
+}
+
+/// <summary>One option in the browser panel's quality/size list.</summary>
+public sealed class StreamChoice
+{
+    /// <summary>yt-dlp selector, e.g. "399+140" (merge) or "251" (audio).</summary>
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>Short label: "1080p60". Empty for audio rows.</summary>
+    public string Label { get; set; } = string.Empty;
+
+    /// <summary>Container(s), e.g. "mp4+m4a".</summary>
+    public string Ext { get; set; } = string.Empty;
+
+    /// <summary>Expected size in bytes (video+audio summed). 0 = unknown.</summary>
+    public long SizeBytes { get; set; }
+
+    /// <summary>"video" or "audio".</summary>
+    public string Kind { get; set; } = "video";
 }
 
 public sealed class StreamFormat

@@ -168,7 +168,8 @@ public sealed class HttpDownloader
     }
 
     /// <summary>Asks the server for size, filename and range support.</summary>
-    public async Task<ProbeResult> ProbeAsync(string url, bool useTor = false, CancellationToken ct = default)
+    public async Task<ProbeResult> ProbeAsync(
+        string url, bool useTor = false, CancellationToken ct = default, string referer = "")
     {
         var result = new ProbeResult();
         try
@@ -188,6 +189,10 @@ public sealed class HttpDownloader
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Range = new RangeHeaderValue(0, 0);
             ApplyAuth(request, url);
+            if (!string.IsNullOrWhiteSpace(referer))
+            {
+                request.Headers.TryAddWithoutValidation("Referer", referer);
+            }
 
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
                 .ConfigureAwait(false);
@@ -360,6 +365,10 @@ public sealed class HttpDownloader
             ? new RangeHeaderValue(from, null)
             : new RangeHeaderValue(from, to);
         ApplyAuth(request, task.Url);
+        if (!string.IsNullOrWhiteSpace(task.Referer))
+        {
+            request.Headers.TryAddWithoutValidation("Referer", task.Referer);
+        }
 
         var client = task.UseTor ? TorClient() : _transfer;
         using var response = await client

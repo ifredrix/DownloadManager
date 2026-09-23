@@ -47,6 +47,7 @@ public sealed class StreamCaptureForm : Form
         ForeColor = Theme.Text;
         Font = new Font("Segoe UI", 9F);
         ShowInTaskbar = false;
+        Icon = Theme.AppIcon;
 
         _txtUrl = new TextBox
         {
@@ -285,6 +286,27 @@ public sealed class StreamCaptureForm : Form
         var format = _lvFormats.SelectedItems[0].Tag as StreamFormat;
         if (format == null) return;
         var url = _txtUrl.Text.Trim();
+
+        // Combined video+audio picks need ffmpeg before yt-dlp runs; fetch it
+        // up front (with progress) so the download never ends as two halves.
+        if (format.Id.Contains('+'))
+        {
+            try
+            {
+                var preflight = new StreamCapture();
+                if (preflight.ResolveFfmpeg() == null)
+                {
+                    _lblProgress.Text = T("stream.checkFfmpeg");
+                    await preflight.EnsureFfmpegAsync();
+                    _log.AppendText("> ffmpeg ready" + Environment.NewLine);
+                }
+            }
+            catch (Exception ex)
+            {
+                // DownloadAsync fails fast with a clear message if it stays missing.
+                _log.AppendText("! ffmpeg: " + ex.Message + Environment.NewLine);
+            }
+        }
 
         _outputDirectory = Path.Combine(_manager.DownloadPath,
             "Streams", StreamCapture.Sanitize(DateTime.Now.ToString("yyyyMMdd-HHmmss")) + "-" + format.Id);

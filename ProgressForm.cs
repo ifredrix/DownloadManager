@@ -282,13 +282,20 @@ public sealed class ProgressForm : Form
         Text = $"{task.ProgressPercentage:0}% {task.FileName}";
         if (_txtUrl.Text != task.Url) _txtUrl.Text = task.Url;
         _lblStatus.Text = task.StatusText;
-        _lblSize.Text = task.FileSize > 0 ? task.FormattedFileSize : T("pr.none");
-        _lblDownloaded.Text = task.FileSize > 0
-            ? string.Format(T("pr.of"), task.FormattedDownloadedBytes, task.FormattedFileSize, task.ProgressPercentage)
-            : task.FormattedDownloadedBytes;
-        _lblRate.Text = $"{task.FormattedDownloadSpeed} / {task.FormattedUploadSpeed}";
+        // Stream tasks carry a 0-100% placeholder on FileSize, never bytes:
+        // show the percent itself and the neutral placeholders instead of
+        // leaking the fake "25 B of 100 B" and a meaningless "0 B/s / 0 B/s".
+        _lblSize.Text = task.SizeText;
+        _lblDownloaded.Text = task.IsPercentProgress
+            ? task.ProgressPercentage.ToString("0.0") + "%"
+            : task.FileSize > 0
+                ? string.Format(T("pr.of"), task.FormattedDownloadedBytes, task.FormattedFileSize, task.ProgressPercentage)
+                : task.FormattedDownloadedBytes;
+        _lblRate.Text = task.Type == DownloadType.Torrent
+            ? $"{task.FormattedDownloadSpeed} / {task.FormattedUploadSpeed}"
+            : task.FormattedSpeedDisplay;
         _lblEta.Text = task.FormattedTimeRemaining;
-        _lblResume.Text = task.SupportsRange ? T("pr.yes") : T("pr.no");
+        _lblResume.Text = task.IsPercentProgress ? "—" : task.SupportsRange ? T("pr.yes") : T("pr.no");
         _bar.Value = (int)Math.Clamp(Math.Round(task.ProgressPercentage * 10), 0, 1000);
 
         _btnPause.Text = task.Status is DownloadStatus.Downloading or DownloadStatus.Queued

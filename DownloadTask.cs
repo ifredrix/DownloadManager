@@ -52,6 +52,8 @@ public class DownloadTask : INotifyPropertyChanged
     private string _category;
     private int _connections;
     private bool _supportsRange;
+    private string _formatId = string.Empty;
+    private string _referer = string.Empty;
 
     public DownloadTask()
     {
@@ -73,6 +75,13 @@ public class DownloadTask : INotifyPropertyChanged
     {
         get => _supportsRange;
         set { _supportsRange = value; OnPropertyChanged(nameof(SupportsRange)); }
+    }
+
+    /// <summary>Origin page (browser context) sent as HTTP Referer; empty = none.</summary>
+    public string Referer
+    {
+        get => _referer;
+        set { _referer = value; OnPropertyChanged(nameof(Referer)); }
     }
 
     /// <summary>Thread-safe increment, used by the parallel HTTP chunk writers.</summary>
@@ -196,6 +205,14 @@ public class DownloadTask : INotifyPropertyChanged
         set { _openFolderOnDone = value; OnPropertyChanged(nameof(OpenFolderOnDone)); }
     }
 
+    /// <summary>yt-dlp format selector picked by the user (e.g. "399+140").
+    /// Empty = automatic best. Stream tasks only.</summary>
+    public string FormatId
+    {
+        get => _formatId;
+        set { _formatId = value ?? string.Empty; OnPropertyChanged(nameof(FormatId)); }
+    }
+
     private long _speedLimitBps;
 
     /// <summary>Per-download cap in bytes/s. 0 means "use the global limit".</summary>
@@ -233,10 +250,22 @@ public class DownloadTask : INotifyPropertyChanged
     public string CategoryText => Localization.T("cat." + Category);
     public string FormattedDownloadSpeed => FormatSpeed(DownloadSpeed);
     public string FormattedUploadSpeed => FormatSpeed(UploadSpeed);
+
+    /// <summary>Speed in the unit this task actually reports: bytes/s normally,
+    /// percent/s for stream tasks (their yt-dlp callback only carries percent).</summary>
+    public string FormattedSpeedDisplay => IsPercentProgress
+        ? $"{DownloadSpeed:0.0} %/s"
+        : FormattedDownloadSpeed;
     public string FormattedTimeRemaining => FormatTime(TimeRemaining);
     public string FormattedCreatedAt => CreatedAt.ToString("yyyy-MM-dd HH:mm:ss");
     public string FormattedFileSize => FormatBytes(FileSize);
     public string FormattedDownloadedBytes => FormatBytes(DownloadedBytes);
+
+    /// <summary>True while a stream task still reports 0-100% progress on the
+    /// FileSize=100 placeholder instead of real byte counts (until yt-dlp
+    /// finishes and the true size is known).</summary>
+    public bool IsPercentProgress =>
+        Type == DownloadType.Stream && FileSize <= 100 && Status != DownloadStatus.Completed;
 
     /// <summary>Stream tasks map 0-100% onto FileSize=100: hide the fake size.</summary>
     public string SizeText => Type == DownloadType.Stream && Status != DownloadStatus.Completed
@@ -256,8 +285,11 @@ public class DownloadTask : INotifyPropertyChanged
 
     private string FormatTime(TimeSpan? timeSpan)
     {
+        // A finished download has no "remaining time" at all: neutral dash
+        // instead of a misleading "unknown".
+        if (Status == DownloadStatus.Completed) return Localization.T("pr.none");
         if (!timeSpan.HasValue || timeSpan.Value.TotalSeconds < 0)
-            return "Unknown";
+            return Localization.T("pr.unknown");
 
         var ts = timeSpan.Value;
         if (ts.TotalSeconds < 60)

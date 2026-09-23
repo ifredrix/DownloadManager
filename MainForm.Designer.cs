@@ -55,14 +55,8 @@ partial class MainForm
         toolStripStatusLabel1 = new ToolStripStatusLabel();
         toolStripStatusLabel2 = new ToolStripStatusLabel();
         toolStripStatusLabel3 = new ToolStripStatusLabel();
-        pnlTitle = new Panel();
-        lblTitle = new Label();
-        btnWinMin = new TrafficLightButton();
-        btnWinMax = new TrafficLightButton();
-        btnWinClose = new TrafficLightButton();
         ((System.ComponentModel.ISupportInitialize)dataGridView).BeginInit();
         statusStrip.SuspendLayout();
-        pnlTitle.SuspendLayout();
         SuspendLayout();
         //
         // txtUrl
@@ -72,7 +66,7 @@ partial class MainForm
         txtUrl.BorderStyle = BorderStyle.FixedSingle;
         txtUrl.Font = new Font("Segoe UI", 10F);
         txtUrl.ForeColor = Color.FromArgb(28, 34, 44);
-        txtUrl.Location = new Point(12, 76);
+        txtUrl.Location = new Point(12, 40);
         // Multiline so the box can be as tall as the toolbar buttons; a
         // single-line TextBox would always snap back to its font height.
         txtUrl.Multiline = true;
@@ -89,7 +83,7 @@ partial class MainForm
         btnAddUrl.FlatAppearance.BorderSize = 0;
         btnAddUrl.FlatStyle = FlatStyle.Flat;
         btnAddUrl.ForeColor = Color.White;
-        btnAddUrl.Location = new Point(446, 76);
+        btnAddUrl.Location = new Point(446, 40);
         btnAddUrl.Name = "btnAddUrl";
         btnAddUrl.Size = new Size(104, 30);
         btnAddUrl.TabIndex = 1;
@@ -104,7 +98,7 @@ partial class MainForm
         btnAddTorrent.FlatAppearance.BorderColor = Color.FromArgb(206, 213, 224);
         btnAddTorrent.FlatStyle = FlatStyle.Flat;
         btnAddTorrent.ForeColor = Color.FromArgb(28, 34, 44);
-        btnAddTorrent.Location = new Point(554, 76);
+        btnAddTorrent.Location = new Point(554, 40);
         btnAddTorrent.Name = "btnAddTorrent";
         btnAddTorrent.Size = new Size(104, 30);
         btnAddTorrent.TabIndex = 2;
@@ -119,7 +113,7 @@ partial class MainForm
         btnGrabLinks.FlatAppearance.BorderColor = Color.FromArgb(206, 213, 224);
         btnGrabLinks.FlatStyle = FlatStyle.Flat;
         btnGrabLinks.ForeColor = Color.FromArgb(28, 34, 44);
-        btnGrabLinks.Location = new Point(780, 76);
+        btnGrabLinks.Location = new Point(780, 40);
         btnGrabLinks.Name = "btnGrabLinks";
         btnGrabLinks.Size = new Size(104, 30);
         btnGrabLinks.TabIndex = 3;
@@ -134,7 +128,7 @@ partial class MainForm
         btnStream.FlatAppearance.BorderColor = Color.FromArgb(206, 213, 224);
         btnStream.FlatStyle = FlatStyle.Flat;
         btnStream.ForeColor = Color.FromArgb(28, 34, 44);
-        btnStream.Location = new Point(672, 76);
+        btnStream.Location = new Point(672, 40);
         btnStream.Name = "btnStream";
         btnStream.Size = new Size(104, 30);
         btnStream.TabIndex = 4;
@@ -149,7 +143,7 @@ partial class MainForm
         btnBrowsers.FlatAppearance.BorderColor = Color.FromArgb(206, 213, 224);
         btnBrowsers.FlatStyle = FlatStyle.Flat;
         btnBrowsers.ForeColor = Color.FromArgb(28, 34, 44);
-        btnBrowsers.Location = new Point(564, 76);
+        btnBrowsers.Location = new Point(564, 40);
         btnBrowsers.Name = "btnBrowsers";
         btnBrowsers.Size = new Size(104, 30);
         btnBrowsers.TabIndex = 5;
@@ -164,7 +158,7 @@ partial class MainForm
         btnSettings.FlatAppearance.BorderColor = Color.FromArgb(206, 213, 224);
         btnSettings.FlatStyle = FlatStyle.Flat;
         btnSettings.ForeColor = Color.FromArgb(28, 34, 44);
-        btnSettings.Location = new Point(898, 76);
+        btnSettings.Location = new Point(898, 40);
         btnSettings.Name = "btnSettings";
         btnSettings.Size = new Size(104, 30);
         btnSettings.TabIndex = 6;
@@ -209,14 +203,14 @@ partial class MainForm
         };
         dataGridView.EnableHeadersVisualStyles = false;
         dataGridView.GridColor = Color.FromArgb(228, 233, 241);
-        dataGridView.Location = new Point(12, 114);
+        dataGridView.Location = new Point(12, 78);
         dataGridView.MultiSelect = false;
         dataGridView.Name = "dataGridView";
         dataGridView.ReadOnly = true;
         dataGridView.RowHeadersVisible = false;
         dataGridView.RowTemplate.Height = 28;
         dataGridView.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-        dataGridView.Size = new Size(976, 356);
+        dataGridView.Size = new Size(976, 392);
         dataGridView.TabIndex = 6;
         dataGridView.CellDoubleClick += dataGridView_CellDoubleClick;
         dataGridView.SelectionChanged += dataGridView_SelectionChanged;
@@ -422,68 +416,6 @@ partial class MainForm
         toolStripStatusLabel3.Size = new Size(109, 19);
         toolStripStatusLabel3.Text = "Active: 0 | Queued: 0";
         //
-        // pnlTitle
-        //
-        pnlTitle.BackColor = Color.FromArgb(249, 250, 253);
-        pnlTitle.Controls.Add(btnWinClose);
-        pnlTitle.Controls.Add(btnWinMin);
-        pnlTitle.Controls.Add(btnWinMax);
-        pnlTitle.Controls.Add(lblTitle);
-        pnlTitle.Dock = DockStyle.Top;
-        pnlTitle.Location = new Point(0, 0);
-        pnlTitle.Name = "pnlTitle";
-        pnlTitle.Size = new Size(1000, 36);
-        pnlTitle.TabIndex = 20;
-        pnlTitle.Paint += pnlTitle_Paint;
-        pnlTitle.MouseDown += pnlTitle_MouseDown;
-        pnlTitle.DoubleClick += pnlTitle_DoubleClick;
-        //
-        // lblTitle
-        //
-        lblTitle.AutoSize = true;
-        lblTitle.Font = new Font("Segoe UI Semibold", 9F);
-        lblTitle.ForeColor = Color.FromArgb(94, 104, 120);
-        lblTitle.Location = new Point(84, 11);
-        lblTitle.Name = "lblTitle";
-        lblTitle.Size = new Size(158, 15);
-        lblTitle.TabIndex = 3;
-        lblTitle.Text = "ifredrix Download Manager";
-        lblTitle.MouseDown += pnlTitle_MouseDown;
-        lblTitle.DoubleClick += pnlTitle_DoubleClick;
-        //
-        // btnWinMin
-        //
-        btnWinMin.Kind = TrafficLightButton.LightKind.Minimize;
-        btnWinMin.LightColor = Color.FromArgb(247, 190, 78);
-        btnWinMin.Location = new Point(34, 11);
-        btnWinMin.Name = "btnWinMin";
-        btnWinMin.Size = new Size(14, 14);
-        btnWinMin.TabIndex = 1;
-        btnWinMin.TabStop = false;
-        btnWinMin.Click += btnWinMin_Click;
-        //
-        // btnWinMax
-        //
-        btnWinMax.Kind = TrafficLightButton.LightKind.Maximize;
-        btnWinMax.LightColor = Color.FromArgb(74, 190, 96);
-        btnWinMax.Location = new Point(56, 11);
-        btnWinMax.Name = "btnWinMax";
-        btnWinMax.Size = new Size(14, 14);
-        btnWinMax.TabIndex = 2;
-        btnWinMax.TabStop = false;
-        btnWinMax.Click += btnWinMax_Click;
-        //
-        // btnWinClose
-        //
-        btnWinClose.Kind = TrafficLightButton.LightKind.Close;
-        btnWinClose.LightColor = Color.FromArgb(230, 106, 100);
-        btnWinClose.Location = new Point(12, 11);
-        btnWinClose.Name = "btnWinClose";
-        btnWinClose.Size = new Size(14, 14);
-        btnWinClose.TabIndex = 0;
-        btnWinClose.TabStop = false;
-        btnWinClose.Click += btnWinClose_Click;
-        //
         // MainForm
         //
         AutoScaleDimensions = new SizeF(7F, 15F);
@@ -511,10 +443,11 @@ partial class MainForm
         Controls.Add(btnAddTorrent);
         Controls.Add(btnAddUrl);
         Controls.Add(txtUrl);
-        Controls.Add(pnlTitle);
         Font = new Font("Segoe UI", 9F);
         ForeColor = Color.FromArgb(28, 34, 44);
-        FormBorderStyle = FormBorderStyle.None;
+        FormBorderStyle = FormBorderStyle.Sizable;
+        MaximizeBox = true;
+        MinimizeBox = true;
         Margin = new Padding(3, 4, 3, 4);
         MinimumSize = new Size(780, 534);
         Name = "MainForm";
@@ -523,8 +456,6 @@ partial class MainForm
         Load += MainForm_Load;
         ((System.ComponentModel.ISupportInitialize)dataGridView).EndInit();
         statusStrip.ResumeLayout(false);
-        pnlTitle.ResumeLayout(false);
-        pnlTitle.PerformLayout();
         ResumeLayout(false);
         PerformLayout();
     }
@@ -555,9 +486,4 @@ partial class MainForm
     private ToolStripStatusLabel toolStripStatusLabel1;
     private ToolStripStatusLabel toolStripStatusLabel2;
     private ToolStripStatusLabel toolStripStatusLabel3;
-    private Panel pnlTitle;
-    private Label lblTitle;
-    private TrafficLightButton btnWinClose;
-    private TrafficLightButton btnWinMin;
-    private TrafficLightButton btnWinMax;
 }

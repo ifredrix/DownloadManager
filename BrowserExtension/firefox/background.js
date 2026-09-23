@@ -41,9 +41,10 @@ async function heartbeat() {
 
 // Returns true only when the app accepted (or already owns) the URL.
 // Offline / excluded / rejected all return false so callers can fall back
-// to letting the browser handle the download itself.
-async function send(url) {
-    const payload = JSON.stringify({ url: url, source: SOURCE });
+// to letting the browser handle the download itself. `format` is the yt-dlp
+// selector picked in the quality list ("" = automatic best).
+async function send(url, format, referer) {
+    const payload = JSON.stringify({ url: url, source: SOURCE, format: format || "", referer: referer || "" });
     const targets = [base];
     const found = await discover();
     if (found && found !== base) targets.push(found);
@@ -61,6 +62,40 @@ async function send(url) {
     return false;
 }
 
+// Asks the app for the quality/size list of a stream URL (yt-dlp -F).
+// Resolves to { ok:true, formats:[...] } or { ok:false, error:"..." }.
+async function requestFormats(url, referer) {
+    const payload = JSON.stringify({ url: url, referer: referer || "" });
+    const targets = [base];
+    const found = await discover();
+    if (found && found !== base) targets.push(found);
+
+    let error = "app offline";
+    for (const target of targets) {
+        try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 20000);
+            const r = await fetch(target + "/formats?source=" + SOURCE, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: payload,
+                cache: "no-store",
+                signal: controller.signal
+            });
+            clearTimeout(timer);
+            if (r.ok) {
+                base = target;
+                const data = await r.json();
+                return { ok: true, formats: (data && data.formats) || [] };
+            }
+            error = (await r.text().catch(() => "")) || ("HTTP " + r.status);
+        } catch (e) {
+            error = (e && e.name === "AbortError") ? "timeout" : "app offline";
+        }
+    }
+    return { ok: false, error: error };
+}
+
 heartbeat();
 setInterval(heartbeat, 10000);
 
@@ -76,13 +111,27 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.contextMenus.onClicked.addListener((info) => {
     const url = info.linkUrl || info.srcUrl || info.pageUrl;
     if (!url) return;
-    send(url);
+    send(url, null, info.pageUrl || "");
 });
 
-// In-page video panel (panel.js) forwards clicks here.
-chrome.runtime.onMessage.addListener((msg) => {
-    if (msg && msg.type === "ifre-capture" && msg.url) {
-        send(msg.url);
+// In-page video panel (panel.js) forwards clicks and quality picks here.
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (!msg || !msg.type) return;
+
+    if (msg.type === "ifre-formats" && msg.url) {
+        requestFormats(msg.url, msg.referer)
+            .then((r) => { try { sendResponse(r); } catch (_) { } })
+            .catch((e) => {
+                try { sendResponse({ ok: false, error: String((e && e.message) || e) }); } catch (_) { }
+            });
+        return true; // keep the channel open for the async answer
+    }
+
+    if (msg.type === "ifre-capture" && msg.url) {
+        send(msg.url, msg.format, msg.referer)
+            .then((ok) => { try { sendResponse({ ok: ok }); } catch (_) { } })
+            .catch(() => { try { sendResponse({ ok: false }); } catch (_) { } });
+        return true;
     }
 });
 
@@ -108,7 +157,7 @@ async function interceptDownload(item) {
         let held = false;
         try { await downloadsApi.pause(item.id); held = true; } catch (_) { }
 
-        const accepted = await send(url);
+        const accepted = await send(url, null, item.referrer || "");
         if (accepted) {
             try { await downloadsApi.cancel(item.id); } catch (_) { }
             try { await downloadsApi.erase({ id: item.id }); } catch (_) { }

@@ -108,12 +108,11 @@ public sealed class DownloadManager : IDisposable
     public const int MaxConnectionsPerDownload = 32;
 
     /// <summary>
-    /// Default: 20 parallel connections. 16-20 is the sweet spot: it is high enough
-    /// to defeat per-connection throttling (archive.org served 43 KB/s on one
-    /// connection but ~6 MB/s on 16) while staying under most per-IP limits.
-    /// Raise towards <see cref="MaxConnectionsPerDownload"/> for throttled servers.
+    /// Default: 32 parallel connections - the ceiling. Each connection pulls
+    /// 1 MB segments (HttpDownloader.SegmentSize), so "1 MB = 1 slot", capped
+    /// at MaxConnectionsPerDownload to stay under typical per-IP limits.
     /// </summary>
-    public const int DefaultConnections = 20;
+    public const int DefaultConnections = 32;
 
     public int ConnectionsPerDownload
     {
@@ -161,11 +160,12 @@ public sealed class DownloadManager : IDisposable
 
     // ---------------------------------------------------------------- add ----
 
-    public Task<DownloadTask> AddDownloadAsync(string source, DownloadType type = DownloadType.Regular)
-        => AddDownloadCoreAsync(source, type, forceTor: false);
+    public Task<DownloadTask> AddDownloadAsync(
+        string source, DownloadType type = DownloadType.Regular, string referer = "")
+        => AddDownloadCoreAsync(source, type, forceTor: false, referer: referer);
 
     private async Task<DownloadTask> AddDownloadCoreAsync(
-        string source, DownloadType type, bool forceTor)
+        string source, DownloadType type, bool forceTor, string referer = "")
     {
         if (string.IsNullOrWhiteSpace(source))
         {
@@ -181,11 +181,11 @@ public sealed class DownloadManager : IDisposable
             source = "http://" + source["mms://".Length..];
         }
 
-        var task = new DownloadTask { Url = source, Type = type };
+        var task = new DownloadTask { Url = source, Type = type, Referer = referer };
 
         if (type == DownloadType.Regular)
         {
-            var probed = await ProbeDownloadAsync(source, forceTor).ConfigureAwait(false);
+            var probed = await ProbeDownloadAsync(source, forceTor, referer).ConfigureAwait(false);
             return await AddProbedAsync(probed).ConfigureAwait(false);
         }
         else if (source.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
@@ -237,6 +237,8 @@ public sealed class DownloadManager : IDisposable
         public bool SupportsRange { get; set; }
         public bool UseTor { get; set; }
         public bool IsFtp { get; set; }
+        /// <summary>Origin page forwarded as HTTP Referer; empty = none.</summary>
+        public string Referer { get; set; } = string.Empty;
         public string Category { get; set; } = "Other";
         public string DefaultDir { get; set; } = string.Empty;
         /// <summary>True when the user picked the folder explicitly.</summary>
@@ -244,7 +246,8 @@ public sealed class DownloadManager : IDisposable
     }
 
     /// <summary>Probes a regular link without queueing (New Download dialog).</summary>
-    public async Task<ProbedDownload> ProbeDownloadAsync(string source, bool forceTor = false)
+    public async Task<ProbedDownload> ProbeDownloadAsync(
+        string source, bool forceTor = false, string referer = "")
     {
         if (string.IsNullOrWhiteSpace(source))
         {
@@ -264,10 +267,16 @@ public sealed class DownloadManager : IDisposable
             throw new ArgumentException("Only http://, https://, ftp:// and ftps:// links are supported.");
         }
 
-        var routeTor = forceTor || RouteAllViaTor;
+        // Route-all cannot carry local targets: a Tor exit would dial its own
+        // loopback/LAN, which either fails (SOCKS5 0x01) or hits the wrong
+        // network entirely. IP-literal and "localhost" targets need no
+        // external DNS, so going direct here leaks nothing extra. An
+        // explicit forceTor still wins - that ask is deliberate.
+        var routeTor = forceTor || (RouteAllViaTor && !TorProxy.IsLocalUrl(uri));
         var probed = new ProbedDownload
         {
             Source = source,
+            Referer = referer,
             UseTor = routeTor || TorProxy.IsOnionUrl(source),
             IsFtp = uri.Scheme == Uri.UriSchemeFtp || uri.Scheme == "ftps"
         };
@@ -292,7 +301,7 @@ public sealed class DownloadManager : IDisposable
         }
         else
         {
-            var probe = await ProbeWithRetryAsync(source, routeTor).ConfigureAwait(false);
+            var probe = await ProbeWithRetryAsync(source, routeTor, referer).ConfigureAwait(false);
             if (!probe.Ok)
             {
                 throw new InvalidOperationException(probe.Error ?? "The server refused the request.");
@@ -327,6 +336,7 @@ public sealed class DownloadManager : IDisposable
             FileSize = Math.Max(0, probed.FileSize),
             SupportsRange = probed.SupportsRange,
             UseTor = probed.UseTor,
+            Referer = probed.Referer,
             Category = GetCategory(fileName)
         };
         var baseDir = probed.CustomDir && !string.IsNullOrWhiteSpace(probed.DefaultDir)
@@ -348,7 +358,8 @@ public sealed class DownloadManager : IDisposable
     /// Queues a stream URL (YouTube etc.) for background download of the best
     /// MP4 via yt-dlp. No format dialog; progress flows through TaskUpdated.
     /// </summary>
-    public async Task<DownloadTask> AddStreamAsync(string url)
+    public async Task<DownloadTask> AddStreamAsync(
+        string url, string formatId = "", string referer = "")
     {
         if (string.IsNullOrWhiteSpace(url))
         {
@@ -375,11 +386,13 @@ public sealed class DownloadManager : IDisposable
         {
             Url = url,
             Type = DownloadType.Stream,
+            Referer = referer,
             FileName = baseName + " (resolving...)",
             FileSize = 0,
             SupportsRange = false,
             SavePath = UniqueDirectory(Path.Combine(StreamsDirectory, baseName)),
             Category = "Video",
+            FormatId = (formatId ?? string.Empty).Trim(),
             Status = DownloadStatus.Pending
         };
 
@@ -391,18 +404,41 @@ public sealed class DownloadManager : IDisposable
     }
 
     /// <summary>
+    /// Quality/size choices for the browser panel: combined video+audio rows
+    /// per resolution plus audio-only tracks (yt-dlp -F, a few seconds).
+    /// </summary>
+    public Task<List<StreamChoice>> ListStreamChoicesAsync(
+        string url, CancellationToken ct = default, string referer = "")
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            throw new ArgumentException("Nothing to inspect.", nameof(url));
+        }
+
+        if (_streams.ResolveTool() == null)
+        {
+            throw new FileNotFoundException(
+                "yt-dlp is not available yet. Add any stream link once in the app to auto-fetch it.");
+        }
+
+        return _streams.ListChoicesAsync(url.Trim(), ct, referer);
+    }
+
+    /// <summary>
     /// Queues a regular HTTP(S) download forced through the Tor network
     /// (censorship circumvention / anonymity for clearnet hosts).
     /// </summary>
-    public Task<DownloadTask> AddTorDownloadAsync(string source)
-        => AddDownloadCoreAsync(source, DownloadType.Regular, forceTor: true);
+    public Task<DownloadTask> AddTorDownloadAsync(string source, string referer = "")
+        => AddDownloadCoreAsync(source, DownloadType.Regular, forceTor: true, referer: referer);
 
     /// <summary>Probes with retries for flaky servers (mirror behaviour).</summary>
-    private async Task<ProbeResult> ProbeWithRetryAsync(string source, bool routeTor)
+    private async Task<ProbeResult> ProbeWithRetryAsync(
+        string source, bool routeTor, string referer = "")
     {
         for (var attempt = 1; ; attempt++)
         {
-            var probe = await _http.ProbeAsync(source, useTor: routeTor).ConfigureAwait(false);
+            var probe = await _http.ProbeAsync(
+                source, useTor: routeTor, referer: referer).ConfigureAwait(false);
             if (probe.Ok || attempt >= 3) return probe;
             await Task.Delay(1000 * attempt).ConfigureAwait(false);
         }
@@ -791,7 +827,7 @@ public sealed class DownloadManager : IDisposable
         // Best-effort title so the row shows something meaningful.
         try
         {
-            var title = await _streams.GetTitleAsync(task.Url, ct).ConfigureAwait(false);
+            var title = await _streams.GetTitleAsync(task.Url, ct, task.Referer).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(title))
             {
                 task.FileName = HttpDownloader.SanitizeFileName(title.Trim()) + ".mp4";
@@ -817,25 +853,38 @@ public sealed class DownloadManager : IDisposable
             TaskUpdated?.Invoke(this, task);
         });
 
+        // Exact format picked in the browser panel / stream dialog, else the
+        // automatic "best MP4 video + audio, merged" selector.
+        var format = string.IsNullOrWhiteSpace(task.FormatId)
+            ? StreamCapture.BestMp4Format
+            : task.FormatId;
+
         var savedPath = (string?)null;
         try
         {
-            savedPath = await _streams.DownloadBestAsync(task.Url, task.SavePath, progress, ct, task.SpeedLimitBps)
+            savedPath = await _streams.DownloadAsync(
+                    task.Url, format, task.SavePath, progress, ct, task.SpeedLimitBps,
+                    task.Referer)
                 .ConfigureAwait(false);
         }
         catch (InvalidOperationException ex)
             when (ex.Message.Contains("ffmpeg", StringComparison.OrdinalIgnoreCase) ||
                   ex.Message.Contains("merge", StringComparison.OrdinalIgnoreCase))
         {
-            // Merge/TS-remux needs ffmpeg: fetch the bundled copy once and
-            // retry the full-quality download before falling back.
-            task.FileName += " (fetching ffmpeg...)";
-            TaskUpdated?.Invoke(this, task);
+            // Merge needs ffmpeg: fetch the bundled copy once and retry the
+            // full-quality download (yt-dlp reuses any track files it already
+            // pulled) before falling back.
+            if (!task.FileName.Contains("fetching ffmpeg", StringComparison.OrdinalIgnoreCase))
+            {
+                task.FileName += " (fetching ffmpeg...)";
+                TaskUpdated?.Invoke(this, task);
+            }
             try
             {
                 await _streams.EnsureFfmpegAsync(null, ct).ConfigureAwait(false);
                 task.DownloadedBytes = 0;
-                savedPath = await _streams.DownloadBestAsync(task.Url, task.SavePath, progress, ct, task.SpeedLimitBps)
+                savedPath = await _streams.DownloadAsync(
+                        task.Url, format, task.SavePath, progress, ct, task.SpeedLimitBps)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -844,10 +893,12 @@ public sealed class DownloadManager : IDisposable
             }
             catch
             {
-                // No ffmpeg on this machine: retry as a single MP4 file (no merge).
+                // No ffmpeg on this machine: one complete file beats two
+                // unplayable halves - drop the fragments and re-download.
                 task.DownloadedBytes = 0;
+                StreamCapture.PurgeFragments(task.SavePath);
                 savedPath = await _streams.DownloadAsync(
-                    task.Url, StreamCapture.FallbackMp4Format, task.SavePath, progress, ct, task.SpeedLimitBps)
+                        task.Url, StreamCapture.FallbackMp4Format, task.SavePath, progress, ct, task.SpeedLimitBps)
                     .ConfigureAwait(false);
             }
         }
@@ -860,6 +911,20 @@ public sealed class DownloadManager : IDisposable
         }
 
         var fi = new FileInfo(savedPath);
+        if (!fi.Exists)
+        {
+            throw new InvalidOperationException("yt-dlp reported success but the file is missing: " + savedPath);
+        }
+
+        // Last line of defence: never mark ".fNNN" track fragments as a
+        // completed download (the bug that produced separate audio/video).
+        if (System.Text.RegularExpressions.Regex.IsMatch(fi.Name, @"\.[fF]\d+\.\w+$"))
+        {
+            throw new InvalidOperationException(
+                "Download ended as separate video/audio track files instead of one merged file: " +
+                fi.Name);
+        }
+
         task.FileName = fi.Name;
         task.SavePath = savedPath;
         task.FileSize = fi.Length;
@@ -906,9 +971,30 @@ public sealed class DownloadManager : IDisposable
                 {
                     _torrents.UpdateStats(task);
                 }
-                else if (task.Type == DownloadType.Stream)
+                else if (task.Type == DownloadType.Stream && task.FileSize <= 100)
                 {
-                    // Progress is pushed by the yt-dlp callback; just repaint.
+                    // The yt-dlp callback pushes percent (0-100, mapped onto the
+                    // FileSize=100 placeholder). Sample it like bytes so the UI
+                    // gets a real rate ("%/s") and a real ETA instead of a
+                    // permanent 0 B/s and "Unknown". Once the true byte size is
+                    // known (FileSize > 100) the regular branch below takes over.
+                    var current = task.DownloadedBytes;
+                    var sample = _samples.GetOrAdd(task.Id, _ => new SpeedSample(current, now));
+                    var elapsed = (now - sample.Time).TotalSeconds;
+                    if (elapsed >= 0.25)
+                    {
+                        var instant = Math.Max(0, (current - sample.Bytes) / elapsed);
+                        task.DownloadSpeed = task.DownloadSpeed <= 0
+                            ? instant
+                            : task.DownloadSpeed * 0.6 + instant * 0.4;
+                        sample.Bytes = current;
+                        sample.Time = now;
+                    }
+
+                    var remainingPct = task.FileSize - current;
+                    task.TimeRemaining = task.DownloadSpeed > 0.05 && remainingPct > 0
+                        ? TimeSpan.FromSeconds(remainingPct / task.DownloadSpeed)
+                        : null;
                 }
                 else
                 {
@@ -995,9 +1081,11 @@ public sealed class DownloadManager : IDisposable
                 .ToList();
             File.WriteAllText(file, System.Text.Json.JsonSerializer.Serialize(entries));
         }
-        catch
+        catch (Exception ex)
         {
-            // Best effort only.
+            // Best effort only - but a silent loss here cost a4,5 GB task
+            // once, so the failure at least leaves a trace.
+            AppLog.Error("SaveHistory(" + file + ") failed: " + ex);
         }
     }
 
@@ -1044,8 +1132,9 @@ public sealed class DownloadManager : IDisposable
             }
             return count;
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Error("LoadHistory(" + file + ") failed: " + ex);
             return 0;
         }
     }

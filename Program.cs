@@ -30,12 +30,27 @@ static class Program
             return;
         }
 
+        // The app once vanished with no trace: route every fault path into
+        // app.log. The unhandled mode must be set before the first window
+        // exists, otherwise WinForms swallows UI faults silently.
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            AppLog.Crash("AppDomain", e.ExceptionObject as Exception);
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (_, e) => AppLog.Crash("UI thread", e.Exception);
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            AppLog.Crash("Task", e.Exception);
+            e.SetObserved();
+        };
+
         // To customize application configuration such as set high DPI settings or default font,
         // see https://aka.ms/applicationconfiguration.
         ApplicationConfiguration.Initialize();
+        AppLog.Info($"start v{Application.ProductVersion} pid={Environment.ProcessId} targets={targets.Count}");
         var form = new MainForm();
         form.StartupUrls.AddRange(targets);
         Application.Run(form);
+        AppLog.Info("exit: main loop ended");
     }
 
     /// <summary>Sends links and .torrent files to the running instance.</summary>
