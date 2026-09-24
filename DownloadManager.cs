@@ -1030,8 +1030,133 @@ public sealed class DownloadManager : IDisposable
     private static bool IsTransient(Exception ex) =>
         ex is HttpRequestException || ex is TimeoutException || ex is IOException;
 
+    private static readonly string[] MediaExtensions =
+    {
+        ".mp4", ".m4v", ".mkv", ".webm", ".mov", ".avi", ".flv", ".wmv",
+        ".mpg", ".mpeg", ".3gp", ".mp3", ".m4a", ".aac", ".ogg", ".opus",
+        ".flac", ".wav", ".wma"
+    };
+
+    /// <summary>
+    /// Refuses to bless error-documents as completed media (the classic
+    /// "963-byte .mp4"): a JSON/HTML block page saved under a video name
+    /// must Error out loudly instead of showing 100% Selesai. Torrents and
+    /// non-media files are untouched; anything unreadable passes through
+    /// rather than failing spuriously. The file itself is kept so the user
+    /// can inspect or delete it via the Hapus dialog.
+    /// </summary>
+    private static string? FakeMediaError(string path)
+    {
+        string ext;
+        try { ext = Path.GetExtension(path); }
+        catch { return null; }
+        var known = false;
+        foreach (var e in MediaExtensions)
+        {
+            if (string.Equals(e, ext, StringComparison.OrdinalIgnoreCase)) { known = true; break; }
+        }
+        if (!known) return null;
+
+        byte[] head = new byte[32];
+        long len;
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            len = fs.Length;
+            if (len < 32) return DescribeFake(ext, len, Array.Empty<byte>());
+            var read = 0;
+            while (read < 32)
+            {
+                var n = fs.Read(head, read, 32 - read);
+                if (n == 0) break;
+                read += n;
+            }
+            if (read < 32) return DescribeFake(ext, len, head);
+        }
+        catch
+        {
+            return null;
+        }
+        if (!HasMediaMagic(head, ext)) return DescribeFake(ext, len, head);
+        return null;
+    }
+
+    private static bool HasMediaMagic(byte[] h, string ext)
+    {
+        var e = ext.ToLowerInvariant();
+        if (e == ".mp4" || e == ".m4v" || e == ".m4a" || e == ".mov" || e == ".3gp")
+        {
+            var box = "" + (char)h[4] + (char)h[5] + (char)h[6] + (char)h[7];
+            return box == "ftyp" || box == "styp";
+        }
+        if (e == ".mkv" || e == ".webm")
+        {
+            return h[0] == 0x1A && h[1] == 0x45 && h[2] == 0xDF && h[3] == 0xA3;
+        }
+        if (e == ".avi" || e == ".wav")
+        {
+            var riff = "" + (char)h[0] + (char)h[1] + (char)h[2] + (char)h[3];
+            var form = "" + (char)h[8] + (char)h[9] + (char)h[10] + (char)h[11];
+            if (riff != "RIFF") return false;
+            return e == ".avi" ? form == "AVI " : form == "WAVE";
+        }
+        if (e == ".mp3")
+        {
+            if (h[0] == 'I' && h[1] == 'D' && h[2] == '3') return true;
+            return h[0] == 0xFF && (h[1] & 0xE0) == 0xE0;
+        }
+        if (e == ".ogg" || e == ".opus")
+        {
+            return h[0] == 'O' && h[1] == 'g' && h[2] == 'g' && h[3] == 'S';
+        }
+        if (e == ".flac")
+        {
+            return h[0] == 'f' && h[1] == 'L' && h[2] == 'a' && h[3] == 'C';
+        }
+        if (e == ".aac")
+        {
+            return h[0] == 0xFF && (h[1] & 0xF6) == 0xF0;
+        }
+        if (e == ".flv")
+        {
+            return h[0] == 'F' && h[1] == 'L' && h[2] == 'V';
+        }
+        if (e == ".wmv" || e == ".wma")
+        {
+            return h[0] == 0x30 && h[1] == 0x26 && h[2] == 0xB2 && h[3] == 0x75;
+        }
+        if (e == ".mpg" || e == ".mpeg")
+        {
+            return h[0] == 0x00 && h[1] == 0x00 && h[2] == 0x01;
+        }
+        return false;
+    }
+
+    private static string DescribeFake(string ext, long len, byte[] head)
+    {
+        var kind = "data tak dikenal / unknown data";
+        if (head.Length > 0)
+        {
+            if (head[0] == '{' || head[0] == '[') kind = "JSON";
+            else if (head[0] == '<') kind = "HTML";
+        }
+        return $"Berkas {ext} ini bukan media valid (isi: {kind}, {len} byte) - " +
+            "server mengembalikan halaman error/blokir, bukan video. " +
+            "Muat ulang halaman lalu unduh lagi, atau alihkan rute Tor-nya. / " +
+            $"This {ext} file is not valid media (contents: {kind}, {len} bytes) - " +
+            "the server returned an error/block page, not video. " +
+            "Reload the page and download again, or flip its Tor route.";
+    }
+
     private void Complete(DownloadTask task)
     {
+        if (task.Type == DownloadType.Regular)
+        {
+            // Never bless fakes: throws into the normal Error path
+            // (InvalidOperationException is not transient, so no retries).
+            var fake = FakeMediaError(task.SavePath);
+            if (fake != null) throw new InvalidOperationException(fake);
+        }
         _retries.TryRemove(task.Id, out _);
         TaskLimits.Drop(task.Id);
         task.Status = DownloadStatus.Completed;

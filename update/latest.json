@@ -1,6 +1,6 @@
 {
   "version": "0.1.0-beta",
   "url": "https://sourceforge.net/projects/SLUG-PLACEHOLDER/files/ifredrixDownloadManager-0.1.0-beta-x64.msi/download",
-  "sha256": "439ce10ad3a2229b8996fb54a275606fd680d5faff880641979067888373d390",
-  "notes": "ifredrix Download Manager 0.1.0-beta - panel sends every media URL, server fallback plus winning sourceUrl, MIT installer Indonesia. URL is a placeholder until the SourceForge slug is registered."
+  "sha256": "145d24de4fc355ac59acc4b6ae5c3717c41efbe14d5c09b80a3df04a38caa7ec",
+  "notes": "ifredrix Download Manager 0.1.0-beta - refuse fake media files with clear error instead of fake Completed, MIT installer Indonesia. URL is a placeholder until the SourceForge slug is registered."
 }
