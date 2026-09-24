@@ -29,6 +29,7 @@ public sealed class ProgressForm : Form
     private readonly ProgressBar _bar;
     private readonly Button _btnHide;
     private readonly Button _btnPause;
+    private readonly Button _btnResume;
     private readonly Button _btnCancel;
     private readonly Label _lblDetailCaption;
     private readonly Panel _segBar;
@@ -98,16 +99,25 @@ public sealed class ProgressForm : Form
 
         _btnHide = new Button
         {
-            Text = T("prog.hide"), Location = new Point(10, y), Size = new Size(170, 30),
+            Text = T("prog.hide"), Location = new Point(10, y), Size = new Size(150, 30),
             FlatStyle = FlatStyle.Flat, Anchor = AnchorStyles.Top | AnchorStyles.Left
         };
         _btnHide.Click += (_, _) => ToggleDetails();
+        // Separate window = its own transport controls (the main window's
+        // row is not always at hand): pause and resume are two fixed
+        // buttons instead of one toggling caption.
         _btnPause = new Button
         {
-            Text = T("prog.pause"), Location = new Point(330, y), Size = new Size(130, 30),
-            FlatStyle = FlatStyle.Flat, Anchor = AnchorStyles.Top | AnchorStyles.Right
+            Text = T("prog.pause"), Location = new Point(166, y), Size = new Size(100, 30),
+            FlatStyle = FlatStyle.Flat, Anchor = AnchorStyles.Top | AnchorStyles.Left
         };
-        _btnPause.Click += (_, _) => TogglePause();
+        _btnPause.Click += (_, _) => PauseNow();
+        _btnResume = new Button
+        {
+            Text = T("prog.resume"), Location = new Point(272, y), Size = new Size(100, 30),
+            FlatStyle = FlatStyle.Flat, Anchor = AnchorStyles.Top | AnchorStyles.Left
+        };
+        _btnResume.Click += (_, _) => ResumeNow();
         _btnCancel = new Button
         {
             Text = T("prog.cancel"), Location = new Point(476, y), Size = new Size(130, 30),
@@ -120,6 +130,7 @@ public sealed class ProgressForm : Form
         };
         pageStatus.Controls.Add(_btnHide);
         pageStatus.Controls.Add(_btnPause);
+        pageStatus.Controls.Add(_btnResume);
         pageStatus.Controls.Add(_btnCancel);
         y += 38;
 
@@ -256,7 +267,7 @@ public sealed class ProgressForm : Form
         ClientSize = new Size(ClientSize.Width, _detailsVisible ? _expandedHeight : _expandedHeight - 210);
     }
 
-    private void TogglePause()
+    private void PauseNow()
     {
         var task = _manager.GetTask(_taskId);
         if (task == null) return;
@@ -264,7 +275,13 @@ public sealed class ProgressForm : Form
         {
             _manager.PauseDownload(task.Id);
         }
-        else if (task.Status is DownloadStatus.Paused or DownloadStatus.Error)
+    }
+
+    private void ResumeNow()
+    {
+        var task = _manager.GetTask(_taskId);
+        if (task == null) return;
+        if (task.Status is DownloadStatus.Paused or DownloadStatus.Error)
         {
             _manager.ResumeDownload(task.Id);
         }
@@ -298,12 +315,11 @@ public sealed class ProgressForm : Form
         _lblResume.Text = task.IsPercentProgress ? "—" : task.SupportsRange ? T("pr.yes") : T("pr.no");
         _bar.Value = (int)Math.Clamp(Math.Round(task.ProgressPercentage * 10), 0, 1000);
 
-        _btnPause.Text = task.Status is DownloadStatus.Downloading or DownloadStatus.Queued
-            ? T("prog.pause") : T("prog.resume");
-        _btnPause.Enabled = task.Status is DownloadStatus.Downloading or DownloadStatus.Queued
-            or DownloadStatus.Paused or DownloadStatus.Error;
-        _btnCancel.Enabled = task.Status is DownloadStatus.Downloading or DownloadStatus.Queued
-            or DownloadStatus.Paused;
+        var active = task.Status is DownloadStatus.Downloading or DownloadStatus.Queued;
+        var resumable = task.Status is DownloadStatus.Paused or DownloadStatus.Error;
+        _btnPause.Enabled = active;
+        _btnResume.Enabled = resumable;
+        _btnCancel.Enabled = active || resumable;
 
         _nudLimit.Value = Math.Min(_nudLimit.Maximum, Math.Max(0, task.SpeedLimitBps / 1024));
         _lblLimitCurrent.Text = string.Format(T("prog.limitCurrent"), task.SpeedLimitText);
