@@ -226,6 +226,12 @@ public sealed class LocalCaptureServer : IDisposable
             return;
         }
 
+        if (!IsJsonPost(ctx))
+        {
+            await WriteTextAsync(ctx, 415, "JSON only").ConfigureAwait(false);
+            return;
+        }
+
         string body;
         using (var reader = new StreamReader(ctx.Request.InputStream, Encoding.UTF8))
         {
@@ -279,6 +285,12 @@ public sealed class LocalCaptureServer : IDisposable
         if (ctx.Request.HttpMethod != "POST")
         {
             await WriteTextAsync(ctx, 405, "POST only").ConfigureAwait(false);
+            return;
+        }
+
+        if (!IsJsonPost(ctx))
+        {
+            await WriteTextAsync(ctx, 415, "JSON only").ConfigureAwait(false);
             return;
         }
 
@@ -366,6 +378,17 @@ public sealed class LocalCaptureServer : IDisposable
             await WriteTextAsync(ctx, 502, "rejected: " + failure).ConfigureAwait(false);
         }
     }
+
+    /// <summary>
+    /// CSRF guard for the JSON APIs: plain web pages can only send
+    /// "simple" cross-origin requests (no custom Content-Type without a
+    /// preflight this server deliberately does not answer), so any POST
+    /// that is not application/json never came from our extension or CLI.
+    /// </summary>
+    private static bool IsJsonPost(HttpListenerContext ctx) =>
+        string.Equals(ctx.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase) &&
+        (ctx.Request.ContentType ?? string.Empty)
+            .StartsWith("application/json", StringComparison.OrdinalIgnoreCase);
 
     private static async Task WriteTextAsync(HttpListenerContext ctx, int status, string text,
         string contentType = "text/plain")

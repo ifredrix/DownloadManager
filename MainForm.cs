@@ -16,6 +16,9 @@ public partial class MainForm : Form
     private DownloadManager _downloadManager = null!;
     private AppSettings _settings = null!;
     private NotifyIcon _tray = null!;
+
+    /// <summary>True with --tray (autostart): begin minimized, tray only.</summary>
+    public bool StartMinimized { get; set; }
     private readonly System.Windows.Forms.Timer _uiTimer;
     private readonly System.Windows.Forms.Timer _clipboardTimer;
     private readonly System.Windows.Forms.Timer _scheduleTimer;
@@ -972,6 +975,12 @@ public partial class MainForm : Form
             Visible = true,
             Text = "ifredrix Download Manager"
         };
+        _tray.DoubleClick += (_, _) => RestoreFromTray();
+        var trayMenu = new ContextMenuStrip();
+        trayMenu.Items.Add(new ToolStripMenuItem(T("tray.show"), null, (_, _) => RestoreFromTray()));
+        trayMenu.Items.Add(new ToolStripSeparator());
+        trayMenu.Items.Add(new ToolStripMenuItem(T("tray.quit"), null, (_, _) => Close()));
+        _tray.ContextMenuStrip = trayMenu;
 
         cmbCategoryFilter.SelectedIndex = 0;
 
@@ -995,6 +1004,12 @@ public partial class MainForm : Form
         UpdateButtonStates();
         UpdateStatusInfo();
         ActiveControl = txtUrl;
+
+        if (StartMinimized)
+        {
+            WindowState = FormWindowState.Minimized;
+            ShowInTaskbar = false;
+        }
 
     }
 
@@ -1803,6 +1818,18 @@ public partial class MainForm : Form
         window.FormClosed += (_, _) => _progressWindows.Remove(id);
         _progressWindows[task.Id] = window;
         window.Show();
+    }
+
+    /// <summary>Brings the main window back from tray life.</summary>
+    private void RestoreFromTray()
+    {
+        Ui(() =>
+        {
+            Show();
+            WindowState = FormWindowState.Normal;
+            ShowInTaskbar = true;
+            Activate();
+        });
     }
 
     private void OpenChecksum()

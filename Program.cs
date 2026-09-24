@@ -22,6 +22,13 @@ static class Program
                         (a.EndsWith(".torrent", StringComparison.OrdinalIgnoreCase) && File.Exists(a)))
             .ToList();
 
+        // Background mode (autostart, tray life): show no window, the
+        // tray icon is the UI. Plain second launches still show the window.
+        var startMinimized = args.Any(a =>
+            string.Equals(a, "--tray", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(a, "-tray", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(a, "/tray", StringComparison.OrdinalIgnoreCase));
+
         using var mutex = new Mutex(true, MutexName, out var first);
         if (!first)
         {
@@ -48,6 +55,7 @@ static class Program
         ApplicationConfiguration.Initialize();
         AppLog.Info($"start v{Application.ProductVersion} pid={Environment.ProcessId} targets={targets.Count}");
         var form = new MainForm();
+        form.StartMinimized = startMinimized;
         form.StartupUrls.AddRange(targets);
         Application.Run(form);
         AppLog.Info("exit: main loop ended");

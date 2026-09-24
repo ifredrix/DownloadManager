@@ -243,7 +243,7 @@ public static class AutoStart
                         ?? throw new InvalidOperationException("Cannot open the startup registry key.");
         if (enabled)
         {
-            key.SetValue(ValueName, "\"" + Application.ExecutablePath + "\"");
+            key.SetValue(ValueName, "\"" + Application.ExecutablePath + "\" --tray");
         }
         else if (key.GetValue(ValueName) != null)
         {
