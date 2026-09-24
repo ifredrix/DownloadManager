@@ -33,6 +33,11 @@
          "Lorem ipsum" placeholder). Path resolves from the build cwd (repo root). -->
     <WixVariable Id="WixUILicenseRtf" Value="installer\License.rtf" />
 
+    <!-- Branded bitmaps (replace the stock WiX maroon): banner 493x58,
+         welcome dialog panel 493x312. Same override mechanism as above. -->
+    <WixVariable Id="WixUIBannerBmp" Value="installer\Banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="installer\Dialog.bmp" />
+
     <Icon Id="AppIcon.ico" SourceFile="app.ico" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
 
