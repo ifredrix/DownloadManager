@@ -29,9 +29,12 @@ public sealed class TorSettingsForm : Form
     private readonly Button _ok;
     private readonly Button _cancel;
 
-    public TorSettingsForm(AppSettings settings)
+    public TorSettingsForm(AppSettings settings, Action? onBundleInstalled = null)
     {
         _settings = settings;
+        _onBundleInstalled = onBundleInstalled;
+        _installedWhileManaged = string.Equals(
+            settings.TorMode, "Managed", StringComparison.OrdinalIgnoreCase);
 
         Text = T("tor.title");
         StartPosition = FormStartPosition.CenterParent;
@@ -138,6 +141,9 @@ public sealed class TorSettingsForm : Form
         _ = RefreshBundleLabelAsync();
     }
 
+    private readonly Action? _onBundleInstalled;
+    private readonly bool _installedWhileManaged;
+
     private TorBundle.ReleaseInfo? _pendingRelease;
 
     private async System.Threading.Tasks.Task RefreshBundleLabelAsync()
@@ -212,8 +218,26 @@ public sealed class TorSettingsForm : Form
             var progress = new Progress<double>(pct => _lblStatus.Text = string.Format(T("tor.downloading"), pct));
             var exe = await TorBundle.InstallAsync(release, progress);
             _txtExe.Text = exe;
+            // Adopt the fresh bundle immediately and persist it: the old
+            // path must not survive in settings just because the user
+            // later presses Batal instead of OK.
+            _settings.TorExePath = exe;
+            _settings.Save();
             _lblStatus.Text = string.Format(T("tor.installed"), exe);
+            if (_cmbMode.SelectedIndex != 2)
+            {
+                _lblStatus.Text += " " + T("tor.externalKeepsRunning");
+            }
             await RefreshBundleLabelAsync();
+            // Managed Tor already active: restart it from the new binary
+            // now, so "downloaded" really means "installed and running".
+            // (A mode just switched to Managed inside this dialog is
+            // covered by OK -> ApplyTorMode instead, avoiding an orphan
+            // process when the dialog ends with Batal.)
+            if (_installedWhileManaged && _cmbMode.SelectedIndex == 2)
+            {
+                _onBundleInstalled?.Invoke();
+            }
         }
         catch (Exception ex)
         {

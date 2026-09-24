@@ -373,7 +373,7 @@ public partial class MainForm : Form
     private void OpenTorSetup()
     {
         if (_settings == null) return;
-        using var dialog = new TorSettingsForm(_settings);
+        using var dialog = new TorSettingsForm(_settings, () => ApplyTorMode());
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {
             _settings.Save();
