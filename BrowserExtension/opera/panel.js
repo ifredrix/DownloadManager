@@ -80,9 +80,13 @@
 
     // MSE/blob frames expose no http src. Resource Timing lists every
     // subresource THIS frame fetched (cross-origin URLs are visible even
-    // without Timing-Allow-Origin) - the manifest (.m3u8/.mpd) or the
-    // progressive file in there is the real media URL the player loaded.
-    function findMediaViaTiming() {
+    // without Timing-Allow-Origin) - manifests (.m3u8/.mpd), progressive
+    // files and audio in there are the real media URLs the player loaded.
+    // Newest fetch first: the active resource is the latest entry, older
+    // ones are previous servers or qualities - still valid fallbacks when
+    // the newest signed URL already died (tokens expire within minutes).
+    function findMediaViaTimingAll() {
+        const out = [];
         try {
             const entries = performance.getEntriesByType("resource") || [];
             const items = [];
@@ -99,26 +103,36 @@
                 }
                 return null;
             };
-            // Manifests beat progressive video beats audio-only; newest
-            // fetch first, because the active resource is the latest entry.
-            return pick(/\.(m3u8|mpd)$/)
-                || pick(/\.(mp4|m4v|webm|mov|mkv|ogv)$/)
-                || pick(/\.(m4a|mp3|aac|ogg|opus|flac|wav)$/);
-        } catch (_) { return null; }
+            const push = (u) => {
+                if (u && !out.includes(u)) out.push(u);
+            };
+            // Manifests beat progressive video beats audio-only.
+            push(pick(/\.(m3u8|mpd)$/));
+            push(pick(/\.(mp4|m4v|webm|mov|mkv|ogv)$/));
+            push(pick(/\.(m4a|mp3|aac|ogg|opus|flac|wav)$/));
+        } catch (_) { /* ignore */ }
+        return out;
     }
 
-    function candidateUrl(video) {
+    function candidateUrls(video) {
+        const out = [];
+        const push = (u) => {
+            const w = unwrapPageUrl(u);
+            if (/^https?:\/\//i.test(w) && !out.includes(w)) out.push(w);
+        };
         const src = video.currentSrc || video.src || "";
-        if (/^https?:\/\//i.test(src)) return unwrapPageUrl(src);
+        if (/^https?:\/\//i.test(src)) push(src);
         const source = video.querySelector("source[src]");
-        if (source && /^https?:\/\//i.test(source.src)) return unwrapPageUrl(source.src);
+        if (source && /^https?:\/\//i.test(source.src)) push(source.src);
         const page = location.href;
         const unwrapped = unwrapPageUrl(page);
         // A wrapper the unwrap rules know (Dailymotion ...) wins: that path
         // is proven. Otherwise ask the resource timeline what this frame
         // really fetched, before falling back to the bare page URL.
-        if (unwrapped !== page) return unwrapped;
-        return findMediaViaTiming() || page;
+        if (unwrapped !== page) push(unwrapped);
+        for (const u of findMediaViaTimingAll()) push(u);
+        push(page);
+        return out;
     }
 
     // Chrome answers via callback; Firefox may hand back a promise. Support
@@ -168,7 +182,7 @@
         return node;
     }
 
-    async function openPicker(url, anchor) {
+    async function openPicker(url, urls, anchor) {
         closeCard();
 
         const node = document.createElement("div");
@@ -190,6 +204,7 @@
         node.style.top = top + "px";
         node.style.left = left + "px";
         node.__url = url;
+        node.__urls = urls || [url];
         node.__anchor = anchor || null;
 
         const head = el("div", "ifre-head");
@@ -207,8 +222,15 @@
         document.documentElement.appendChild(node);
         card = node;
 
-        const resp = await sendMessage({ type: "ifre-formats", url: url, referer: location.href });
+        const resp = await sendMessage({ type: "ifre-formats", url: url, urls: urls, referer: location.href });
         if (card !== node) return; // user closed it (or reopened) meanwhile
+
+        // The server may have listed a fallback URL (dead signed tokens):
+        // rows must capture THAT url - format ids only mean something there.
+        if (resp && resp.ok === true && resp.sourceUrl) {
+            url = resp.sourceUrl;
+            node.__url = url;
+        }
 
         body.textContent = "";
         renderBody(body, url, anchor, resp);
@@ -257,7 +279,7 @@
             body.appendChild(el("div", "ifre-error",
                 (resp && resp.error) ? String(resp.error) : T.offline));
             const retry = el("button", "ifre-retry", T.retry);
-            retry.addEventListener("click", () => openPicker(url, anchor));
+            retry.addEventListener("click", () => openPicker(node.__url, node.__urls || [node.__url], anchor));
             body.appendChild(retry);
             return;
         }
@@ -349,7 +371,8 @@
         btn.addEventListener("click", (ev) => {
             ev.stopPropagation();
             ev.preventDefault();
-            openPicker(candidateUrl(video), btn);
+            const urls = candidateUrls(video);
+            openPicker(urls[0] || location.href, urls, btn);
         });
         document.documentElement.appendChild(btn);
         buttons.set(video, btn);

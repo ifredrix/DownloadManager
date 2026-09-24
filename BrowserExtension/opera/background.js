@@ -104,9 +104,9 @@ async function send(url, format, referer, ui) {
 
 // Asks the app for the quality/size list of a stream URL (yt-dlp -F).
 // Resolves to { ok:true, formats:[...] } or { ok:false, error:"..." }.
-async function requestFormats(url, referer) {
+async function requestFormats(url, referer, urls) {
     const ctx = await pageContext(referer || "", url);
-    const payload = JSON.stringify({ url: url, referer: referer || "", ua: ctx.ua, cookies: ctx.cookies });
+    const payload = JSON.stringify({ url: url, urls: urls || [url], referer: referer || "", ua: ctx.ua, cookies: ctx.cookies });
     const targets = [base];
     const found = await discover();
     if (found && found !== base) targets.push(found);
@@ -127,7 +127,7 @@ async function requestFormats(url, referer) {
             if (r.ok) {
                 base = target;
                 const data = await r.json();
-                return { ok: true, formats: (data && data.formats) || [] };
+                return { ok: true, formats: (data && data.formats) || [], sourceUrl: (data && data.sourceUrl) || "" };
             }
             error = (await r.text().catch(() => "")) || ("HTTP " + r.status);
         } catch (e) {
@@ -160,7 +160,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!msg || !msg.type) return;
 
     if (msg.type === "ifre-formats" && msg.url) {
-        requestFormats(msg.url, msg.referer)
+        requestFormats(msg.url, msg.referer, msg.urls)
             .then((r) => { try { sendResponse(r); } catch (_) { } })
             .catch((e) => {
                 try { sendResponse({ ok: false, error: String((e && e.message) || e) }); } catch (_) { }

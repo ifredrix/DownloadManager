@@ -262,28 +262,79 @@ public sealed class LocalCaptureServer : IDisposable
         CapturePayload? payload = null;
         try { payload = JsonSerializer.Deserialize<CapturePayload>(body, JsonOpts); } catch { }
 
-        if (payload == null || string.IsNullOrWhiteSpace(payload.Url) ||
-            !Uri.TryCreate(payload.Url, UriKind.Absolute, out _))
+        if (payload == null ||
+            (string.IsNullOrWhiteSpace(payload.Url) &&
+             (payload.Urls == null || payload.Urls.Count == 0)))
         {
             await WriteTextAsync(ctx, 400, "invalid payload").ConfigureAwait(false);
             return;
         }
 
-        List<StreamChoice> choices;
-        try
+        // The panel sends every media URL it saw (newest first): signed
+        // URLs die within minutes, so try each in order until one yields
+        // a list. The winner travels back as sourceUrl - the panel must
+        // capture THAT url, because format ids only mean something there.
+        var candidates = new List<string>();
+        if (payload.Urls != null)
         {
-            choices = await _manager.ListStreamChoicesAsync(
-                    payload.Url, _cts.Token, payload.Referer, payload.Ua, payload.Cookies)
-                .ConfigureAwait(false);
+            foreach (var u in payload.Urls)
+            {
+                var t = (u ?? string.Empty).Trim();
+                if (Uri.TryCreate(t, UriKind.Absolute, out var uri) &&
+                    (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) &&
+                    !candidates.Contains(t, StringComparer.OrdinalIgnoreCase))
+                {
+                    candidates.Add(t);
+                }
+            }
         }
-        catch (Exception ex)
+        var single = (payload.Url ?? string.Empty).Trim();
+        if (Uri.TryCreate(single, UriKind.Absolute, out var suri) &&
+            (suri.Scheme == Uri.UriSchemeHttp || suri.Scheme == Uri.UriSchemeHttps) &&
+            !candidates.Contains(single, StringComparer.OrdinalIgnoreCase))
         {
-            await WriteTextAsync(ctx, 502, "failed: " + FriendlyFormatsError(ex.Message)).ConfigureAwait(false);
+            candidates.Add(single);
+        }
+        if (candidates.Count == 0)
+        {
+            await WriteTextAsync(ctx, 400, "invalid payload").ConfigureAwait(false);
+            return;
+        }
+
+        List<StreamChoice> choices = new();
+        var winner = candidates[0];
+        Exception? lastError = null;
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                var list = await _manager.ListStreamChoicesAsync(
+                        candidate, _cts.Token, payload.Referer, payload.Ua, payload.Cookies)
+                    .ConfigureAwait(false);
+                if (list.Count > 0)
+                {
+                    choices = list;
+                    winner = candidate;
+                    break;
+                }
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+            }
+        }
+        if (choices.Count == 0)
+        {
+            var detail = lastError != null
+                ? FriendlyFormatsError(lastError.Message)
+                : "No quality choices found.";
+            await WriteTextAsync(ctx, 502, "failed: " + detail).ConfigureAwait(false);
             return;
         }
 
         _heartbeats[source] = DateTime.UtcNow;
-        var json = JsonSerializer.Serialize(new { ok = true, formats = choices }, JsonOutOpts);
+        var json = JsonSerializer.Serialize(
+            new { ok = true, formats = choices, sourceUrl = winner }, JsonOutOpts);
         await WriteTextAsync(ctx, 200, json, "application/json").ConfigureAwait(false);
     }
 
@@ -466,6 +517,12 @@ public sealed class LocalCaptureServer : IDisposable
         // older extensions omit it (= toast only, old behaviour).
         [JsonPropertyName("ui")]
         public bool Ui { get; set; }
+
+        // Every media URL the panel saw, newest first (signed URLs die
+        // within minutes - the server tries each until one lists).
+        // Optional: older extensions send only "url".
+        [JsonPropertyName("urls")]
+        public List<string>? Urls { get; set; }
     }
 
     public sealed class CapturedLink
