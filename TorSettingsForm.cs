@@ -20,6 +20,7 @@ public sealed class TorSettingsForm : Form
     private readonly TextBox _txtEndpoint;
     private readonly TextBox _txtExe;
     private readonly CheckBox _chkRouteAll;
+    private readonly Label _lblExe;
     private readonly Label _lblBundle;
     private readonly Button _btnBundle;
     private readonly Label _lblStatus;
@@ -62,6 +63,10 @@ public sealed class TorSettingsForm : Form
             T("tor.external"),
             T("tor.managed")
         });
+        // The managed-exe row is meaningless outside Managed mode: grey it
+        // out there so the stale path it shows is never mistaken for "in
+        // use". An empty box means "use the app's bundled Tor".
+        _cmbMode.SelectedIndexChanged += (_, _) => ApplyModeStates();
 
         var lblEndpoint = new Label { Text = T("tor.endpoint"), AutoSize = true, Location = new Point(16, 52) };
         _txtEndpoint = new TextBox
@@ -72,12 +77,13 @@ public sealed class TorSettingsForm : Form
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
 
-        var lblExe = new Label { Text = T("tor.exe"), AutoSize = true, Location = new Point(16, 86) };
+        var lblExe = _lblExe = new Label { Text = T("tor.exe"), AutoSize = true, Location = new Point(16, 86) };
         _txtExe = new TextBox
         {
             Location = new Point(200, 83),
             Size = new Size(190, 23),
             BorderStyle = BorderStyle.FixedSingle,
+            PlaceholderText = T("tor.exePlaceholder"),
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
         _btnDetect = new Button { Text = T("tor.find"), Location = new Point(394, 82), Size = new Size(48, 25), FlatStyle = FlatStyle.Flat, Anchor = AnchorStyles.Top | AnchorStyles.Right };
@@ -138,6 +144,7 @@ public sealed class TorSettingsForm : Form
         Controls.Add(_cancel);
 
         LoadValues();
+        ApplyModeStates();
         _ok.Tag = "primary";
         Theme.StyleForm(this);
         _ = RefreshBundleLabelAsync();
@@ -146,6 +153,15 @@ public sealed class TorSettingsForm : Form
     private readonly Action? _onBundleInstalled;
     private readonly Func<int>? _managedBootstrap;
     private readonly bool _installedWhileManaged;
+
+    private void ApplyModeStates()
+    {
+        var managed = _cmbMode.SelectedIndex == 2;
+        _lblExe.Enabled = managed;
+        _txtExe.Enabled = managed;
+        _btnDetect.Enabled = managed;
+        _btnBrowse.Enabled = managed;
+    }
 
     private TorBundle.ReleaseInfo? _pendingRelease;
 

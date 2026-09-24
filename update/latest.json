@@ -1,6 +1,6 @@
 {
   "version": "0.1.0-beta",
   "url": "https://sourceforge.net/projects/SLUG-PLACEHOLDER/files/ifredrixDownloadManager-0.1.0-beta-x64.msi/download",
-  "sha256": "bcb9157b59d4ac499fceb71817036ca822b59d85f22054650e4d6f92d8bd9359",
-  "notes": "ifredrix Download Manager 0.1.0-beta - Tor bundle install fix (nested layout), exit-IP circuit proof in Tor test, MIT installer. URL is a placeholder until the SourceForge slug is registered."
+  "sha256": "83dcd3bd78acc0fff4c2510e9880366d1ff47d664293c2ff55e9179c1078a549",
+  "notes": "ifredrix Download Manager 0.1.0-beta - Tor dialog disambiguated (contextual managed-exe row, bundled default), MIT installer. URL is a placeholder until the SourceForge slug is registered."
 }
