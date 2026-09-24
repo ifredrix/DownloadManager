@@ -29,10 +29,12 @@ public sealed class TorSettingsForm : Form
     private readonly Button _ok;
     private readonly Button _cancel;
 
-    public TorSettingsForm(AppSettings settings, Action? onBundleInstalled = null)
+    public TorSettingsForm(
+        AppSettings settings, Action? onBundleInstalled = null, Func<int>? managedBootstrap = null)
     {
         _settings = settings;
         _onBundleInstalled = onBundleInstalled;
+        _managedBootstrap = managedBootstrap;
         _installedWhileManaged = string.Equals(
             settings.TorMode, "Managed", StringComparison.OrdinalIgnoreCase);
 
@@ -142,6 +144,7 @@ public sealed class TorSettingsForm : Form
     }
 
     private readonly Action? _onBundleInstalled;
+    private readonly Func<int>? _managedBootstrap;
     private readonly bool _installedWhileManaged;
 
     private TorBundle.ReleaseInfo? _pendingRelease;
@@ -325,18 +328,33 @@ public sealed class TorSettingsForm : Form
         {
             if (_cmbMode.SelectedIndex == 2)
             {
+                // Managed: a start in progress reports its live bootstrap
+                // percent; otherwise just verify the binary exists.
+                var pct = _managedBootstrap?.Invoke() ?? -1;
+                if (pct >= 0 && pct < 100)
+                {
+                    _lblStatus.Text = string.Format(T("tor.startingPct"), pct);
+                    return;
+                }
                 var exe = TorManager.FindTorExe(_txtExe.Text.Trim());
-                _lblStatus.Text = exe == null
-                    ? "Status: tor.exe not found."
-                    : $"Status: tor.exe OK ({exe}).";
+                _lblStatus.Text = exe == null ? T("tor.notFound") : T("tor.exeFound");
                 return;
             }
 
             ParseEndpoint(_txtEndpoint.Text.Trim(), out var host, out var port);
-            var ok = await TorProxy.IsAvailableAsync(host, port);
-            _lblStatus.Text = ok
-                ? string.Format(T("tor.reachable"), host, port)
-                : string.Format(T("tor.unreachable"), host, port);
+            if (!await TorProxy.IsAvailableAsync(host, port))
+            {
+                _lblStatus.Text = string.Format(T("tor.unreachable"), host, port);
+                return;
+            }
+            // An open port is not proof: a fresh Tor answers SOCKS long
+            // before its first circuit exists. Prove a real circuit and
+            // report the exit - that is the "ready to download" signal.
+            _lblStatus.Text = string.Format(T("tor.checkingCircuit"), host, port);
+            var exit = await TorProxy.CheckExitAsync(host, port);
+            _lblStatus.Text = exit == null
+                ? string.Format(T("tor.noCircuit"), host, port)
+                : string.Format(T("tor.torReady"), exit);
         }
         finally
         {

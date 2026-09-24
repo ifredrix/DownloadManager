@@ -28,7 +28,19 @@ public static class TorBundle
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "ifredrixDownloadManager", "tools", "tor-bundle");
 
-    public static string BundledExePath => Path.Combine(BundleDirectory, "tor.exe");
+    public static string BundledExePath
+    {
+        get
+        {
+            // Newer expert bundles nest everything (tor/tor.exe, data/,
+            // docs/) instead of one flat tree: accept either layout.
+            var flat = Path.Combine(BundleDirectory, "tor.exe");
+            if (File.Exists(flat)) return flat;
+            var nested = Path.Combine(BundleDirectory, "tor", "tor.exe");
+            if (File.Exists(nested)) return nested;
+            return flat;
+        }
+    }
 
     public sealed class ReleaseInfo
     {
@@ -150,10 +162,12 @@ public static class TorBundle
         Directory.CreateDirectory(BundleDirectory);
         var archive = Path.Combine(BundleDirectory, release.FileName + ".download");
 
+        var phase = "download";
         try
         {
             await DownloadToFileAsync(release.FileUrl, archive, progress, ct).ConfigureAwait(false);
 
+            phase = "checksum verify";
             var expected = await LookupHashAsync(release, ct).ConfigureAwait(false);
             var actual = await Task.Run(() =>
             {
@@ -167,6 +181,7 @@ public static class TorBundle
                     "SHA256 mismatch - the download may be tampered with. Aborted.");
             }
 
+            phase = "extract";
             var stage = Path.Combine(BundleDirectory, "stage");
             if (Directory.Exists(stage)) Directory.Delete(stage, true);
             Directory.CreateDirectory(stage);
@@ -191,6 +206,7 @@ public static class TorBundle
             var torExe = Directory.EnumerateFiles(stage, "tor.exe", SearchOption.AllDirectories)
                 .FirstOrDefault()
                 ?? throw new InvalidOperationException("tor.exe not found in the bundle.");
+            phase = "replace";
 
             // Replace the previous bundle: clear the directory (keeping the
             // archive, deleted in finally), then move the extracted tree in.
@@ -199,6 +215,10 @@ public static class TorBundle
             foreach (var path in Directory.GetFileSystemEntries(BundleDirectory))
             {
                 if (string.Equals(path, archive, StringComparison.OrdinalIgnoreCase)) continue;
+                // Never wipe the stage directory we just extracted into -
+                // doing so deletes the fresh files, and every step below
+                // then fails with "could not find a part of the path".
+                if (string.Equals(path, stage, StringComparison.OrdinalIgnoreCase)) continue;
                 try
                 {
                     if (Directory.Exists(path)) Directory.Delete(path, true);
@@ -220,11 +240,22 @@ public static class TorBundle
                 File.Move(file, dest);
             }
 
-            if (!File.Exists(BundledExePath))
-            {
-                throw new InvalidOperationException("Install finished but tor.exe is missing.");
-            }
-            return BundledExePath;
+            // Newer bundles nest tor.exe (tor/tor.exe); older ones land
+            // flat. Accept wherever it landed and report the real path so
+            // settings adopt it instead of a location that stays missing.
+            var finalExe = Directory.EnumerateFiles(BundleDirectory, "tor.exe", SearchOption.AllDirectories)
+                .FirstOrDefault()
+                ?? throw new InvalidOperationException("Install finished but tor.exe is missing.");
+            return finalExe;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Tor bundle {phase} failed" +
+                (phase == "replace"
+                    ? " (if files vanished mid-install, check antivirus quarantine and whitelist the tools folder)"
+                    : string.Empty) +
+                ": " + ex.Message);
         }
         finally
         {

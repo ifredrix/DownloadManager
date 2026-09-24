@@ -113,6 +113,25 @@ public sealed class TorManager : IDisposable
         {
             // Best effort only.
         }
+        // One-click bundle layout: tor.exe flat beside data\, or nested
+        // as tor/tor.exe beside data\. Either way the geoip files (if the
+        // bundle ships them) sit next to the exe tree, not in Tor Browser's
+        // Data\Tor spot checked above.
+        try
+        {
+            var torDir = Path.GetDirectoryName(torExe);
+            foreach (var baseDir in new[]
+                { torDir, Directory.GetParent(torDir ?? string.Empty)?.FullName })
+            {
+                if (string.IsNullOrEmpty(baseDir)) continue;
+                var full = Path.Combine(baseDir, "data", name);
+                if (File.Exists(full)) return full;
+            }
+        }
+        catch
+        {
+            // Best effort only.
+        }
         return null;
     }
 

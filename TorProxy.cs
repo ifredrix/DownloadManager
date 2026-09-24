@@ -1,8 +1,10 @@
 using System;
 using System.IO;
 using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -89,6 +91,42 @@ public static class TorProxy
         catch
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// End-to-end Tor proof: builds a circuit to check.torproject.org and
+    /// asks whether we arrive via Tor. Returns the exit IP, or null when
+    /// the proxy answers but no usable circuit exists yet (a fresh Tor
+    /// serves SOCKS long before its first circuit). TLS is fully
+    /// validated - a path-level MITM must never silently pass.
+    /// </summary>
+    public static async Task<string?> CheckExitAsync(string? proxyHost = null, int? proxyPort = null)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+        try
+        {
+            using var tunnel = await ConnectAsync(
+                proxyHost ?? Host, proxyPort ?? Port, "check.torproject.org", 443, cts.Token)
+                .ConfigureAwait(false);
+            using var tls = new SslStream(tunnel);
+            await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+            {
+                TargetHost = "check.torproject.org",
+            }, cts.Token).ConfigureAwait(false);
+            var request = "GET /api/ip HTTP/1.1\r\nHost: check.torproject.org\r\n" +
+                "User-Agent: ifredrixDownloadManager\r\nConnection: close\r\n\r\n";
+            var bytes = Encoding.ASCII.GetBytes(request);
+            await tls.WriteAsync(bytes, cts.Token).ConfigureAwait(false);
+            using var reader = new StreamReader(tls, Encoding.ASCII);
+            var body = await reader.ReadToEndAsync().ConfigureAwait(false);
+            if (!Regex.IsMatch(body, @"""IsTor""\s*:\s*true")) return null;
+            var ip = Regex.Match(body, @"""IP""\s*:\s*""([^""]+)""");
+            return ip.Success ? ip.Groups[1].Value : "?";
+        }
+        catch
+        {
+            return null;
         }
     }
 
