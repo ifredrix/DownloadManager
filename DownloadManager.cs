@@ -756,6 +756,33 @@ public sealed class DownloadManager : IDisposable
         return true;
     }
 
+    /// <summary>Existing on-disk paths owned by this task: the file plus
+    /// its .tdpart sidecar, or the stream directory (guarded to stay under
+    /// the Streams folder so nothing outside it can ever be touched).</summary>
+    public List<string> RemovalPaths(string taskId)
+    {
+        var paths = new List<string>();
+        var task = GetTask(taskId);
+        if (task == null) return paths;
+        if (task.Type == DownloadType.Stream)
+        {
+            if (!string.IsNullOrWhiteSpace(task.SavePath) &&
+                Directory.Exists(task.SavePath) &&
+                task.SavePath.StartsWith(StreamsDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                paths.Add(task.SavePath);
+            }
+            return paths;
+        }
+        if (!string.IsNullOrWhiteSpace(task.SavePath))
+        {
+            if (File.Exists(task.SavePath)) paths.Add(task.SavePath);
+            var sidecar = task.SavePath + ".tdpart";
+            if (File.Exists(sidecar)) paths.Add(sidecar);
+        }
+        return paths;
+    }
+
     // ---------------------------------------------------------------- pump ----
 
     private async Task PumpAsync()

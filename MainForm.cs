@@ -833,7 +833,7 @@ public partial class MainForm : Form
         _rowMenu.Items.Add(T("menu.pause"), null, (_, _) => { if (_selectedTask != null) _downloadManager.PauseDownload(_selectedTask.Id); });
         _rowMenu.Items.Add(T("menu.resume"), null, (_, _) => { if (_selectedTask != null) _downloadManager.ResumeDownload(_selectedTask.Id); });
         _rowMenu.Items.Add(T("menu.cancel"), null, (_, _) => { if (_selectedTask != null) { _downloadManager.CancelDownload(_selectedTask.Id); UpdateButtonStates(); } });
-        _rowMenu.Items.Add(T("menu.remove"), null, (_, _) => { if (_selectedTask != null) { _downloadManager.RemoveTask(_selectedTask.Id); _selectedTask = null; UpdateButtonStates(); } });
+        _rowMenu.Items.Add(T("menu.remove"), null, (_, _) => RemoveSelectedTask());
         _rowMenu.Items.Add(T("menu.progress"), null, (_, _) => OpenProgress());
         _rowMenu.Items.Add(T("menu.checksum"), null, (_, _) => OpenChecksum());
         _rowTorRoute = new ToolStripMenuItem(T("menu.torRoute"), null, (_, _) => _ = ToggleTorRouteAsync())
@@ -1737,10 +1737,42 @@ public partial class MainForm : Form
         UpdateButtonStates();
     }
 
-    private void btnRemove_Click(object sender, EventArgs e)
+    private void btnRemove_Click(object sender, EventArgs e) => RemoveSelectedTask();
+
+    /// <summary>Deletes the selected task: list row always, files only on
+    /// explicit choice (asked only when files actually exist on disk).</summary>
+    private void RemoveSelectedTask()
     {
-        if (_selectedTask == null) return;
-        _downloadManager.RemoveTask(_selectedTask.Id);
+        var task = _selectedTask;
+        if (task == null || _downloadManager == null) return;
+        var paths = _downloadManager.RemovalPaths(task.Id);
+        var deleteFiles = false;
+        if (paths.Count > 0)
+        {
+            using var dialog = new DeleteConfirmForm(task.FileName);
+            if (dialog.ShowDialog(this) != DialogResult.OK ||
+                dialog.Result == DeleteConfirmForm.Choice.Cancel)
+            {
+                return;
+            }
+            deleteFiles = dialog.Result == DeleteConfirmForm.Choice.ListAndFile;
+        }
+        _downloadManager.RemoveTask(task.Id);
+        if (deleteFiles)
+        {
+            foreach (var path in paths)
+            {
+                try
+                {
+                    if (File.Exists(path)) File.Delete(path);
+                    else if (Directory.Exists(path)) Directory.Delete(path, true);
+                }
+                catch (Exception ex)
+                {
+                    SetStatus(string.Format(T("del.deleteFailed"), path, ex.Message));
+                }
+            }
+        }
         _selectedTask = null;
         UpdateButtonStates();
     }
