@@ -42,6 +42,12 @@ public sealed class LocalCaptureServer : IDisposable
 
     public event EventHandler<CapturedLink>? LinkCaptured;
 
+    /// <summary>Raised by GET /show: a second instance asks us to show up.</summary>
+    public event EventHandler? ShowRequested;
+
+    /// <summary>Raised by POST /quit (JSON): scripted graceful shutdown.</summary>
+    public event EventHandler? QuitRequested;
+
     /// <summary>Optional URL exclusion (wildcard patterns). True = reject.</summary>
     public Func<string, bool>? IsExcluded { get; set; }
 
@@ -125,6 +131,21 @@ public sealed class LocalCaptureServer : IDisposable
                 case "/heartbeat":
                     _heartbeats[source] = DateTime.UtcNow;
                     await WriteTextAsync(ctx, 200, "ok").ConfigureAwait(false);
+                    break;
+
+                case "/show":
+                    ShowRequested?.Invoke(this, EventArgs.Empty);
+                    await WriteTextAsync(ctx, 200, "shown").ConfigureAwait(false);
+                    break;
+
+                case "/quit":
+                    if (!IsJsonPost(ctx))
+                    {
+                        await WriteTextAsync(ctx, 415, "JSON only").ConfigureAwait(false);
+                        break;
+                    }
+                    QuitRequested?.Invoke(this, EventArgs.Empty);
+                    await WriteTextAsync(ctx, 200, "quitting").ConfigureAwait(false);
                     break;
 
                 case "/status":

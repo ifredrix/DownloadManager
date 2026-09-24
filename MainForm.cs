@@ -19,6 +19,12 @@ public partial class MainForm : Form
 
     /// <summary>True with --tray (autostart): begin minimized, tray only.</summary>
     public bool StartMinimized { get; set; }
+
+    /// <summary>Set only for a real exit (tray menu, shutdown, --quit):
+    /// plain UserClosing parks to the tray instead.</summary>
+    private bool _allowExit;
+
+    private bool _trayHintShown;
     private readonly System.Windows.Forms.Timer _uiTimer;
     private readonly System.Windows.Forms.Timer _clipboardTimer;
     private readonly System.Windows.Forms.Timer _scheduleTimer;
@@ -662,6 +668,8 @@ public partial class MainForm : Form
         if (_captureServer.TryStart())
         {
             _captureServer.LinkCaptured += OnBrowserLinkCaptured;
+            _captureServer.ShowRequested += (_, _) => RestoreFromTray();
+            _captureServer.QuitRequested += (_, _) => Ui(() => { _allowExit = true; Close(); });
             SetStatus(string.Format(T("status.captureOk"), _captureServer.Port));
         }
         else
@@ -979,7 +987,7 @@ public partial class MainForm : Form
         var trayMenu = new ContextMenuStrip();
         trayMenu.Items.Add(new ToolStripMenuItem(T("tray.show"), null, (_, _) => RestoreFromTray()));
         trayMenu.Items.Add(new ToolStripSeparator());
-        trayMenu.Items.Add(new ToolStripMenuItem(T("tray.quit"), null, (_, _) => Close()));
+        trayMenu.Items.Add(new ToolStripMenuItem(T("tray.quit"), null, (_, _) => { _allowExit = true; Close(); }));
         _tray.ContextMenuStrip = trayMenu;
 
         cmbCategoryFilter.SelectedIndex = 0;
@@ -1045,6 +1053,16 @@ public partial class MainForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        if (e.CloseReason == CloseReason.UserClosing && !_allowExit)
+        {
+            // X / Alt+F4 parks to the tray instead of exiting: the browser
+            // panel needs the local server alive. A real exit comes from
+            // the tray menu, Windows shutdown, or --quit.
+            e.Cancel = true;
+            HideToTray();
+            return;
+        }
+
         AppLog.Info($"closing ({e.CloseReason}): saving history");
         SaveGridColumns();
         try { _downloadManager?.SaveHistory(AppSettings.HistoryFile); }
@@ -1829,6 +1847,23 @@ public partial class MainForm : Form
             WindowState = FormWindowState.Normal;
             ShowInTaskbar = true;
             Activate();
+        });
+    }
+
+    /// <summary>Parks the window in the tray, keeping server+downloads alive.</summary>
+    private void HideToTray()
+    {
+        Ui(() =>
+        {
+            Hide();
+            ShowInTaskbar = false;
+            if (!_trayHintShown && _tray != null)
+            {
+                _trayHintShown = true;
+                _tray.BalloonTipTitle = T("lbl.tray");
+                _tray.BalloonTipText = T("tray.minimized");
+                _tray.ShowBalloonTip(3000);
+            }
         });
     }
 

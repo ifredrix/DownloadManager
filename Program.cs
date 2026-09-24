@@ -28,14 +28,26 @@ static class Program
             string.Equals(a, "--tray", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(a, "-tray", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(a, "/tray", StringComparison.OrdinalIgnoreCase));
+        var quit = args.Any(a =>
+            string.Equals(a, "--quit", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(a, "-quit", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(a, "/quit", StringComparison.OrdinalIgnoreCase));
 
         using var mutex = new Mutex(true, MutexName, out var first);
         if (!first)
         {
-            // Another instance owns the GUI: hand links and files to it, then exit.
-            if (targets.Count > 0) ForwardToRunningInstance(targets);
+            // Another instance owns the GUI: hand links and files to it,
+            // wake its window (it may be parked in the tray), then exit.
+            // --quit instead asks it to shut down gracefully (saves history).
+            if (quit) QuitRunningInstance();
+            else
+            {
+                if (targets.Count > 0) ForwardToRunningInstance(targets);
+                WakeRunningInstance();
+            }
             return;
         }
+        if (quit) return;
 
         // The app once vanished with no trace: route every fault path into
         // app.log. The unhandled mode must be set before the first window
@@ -59,6 +71,44 @@ static class Program
         form.StartupUrls.AddRange(targets);
         Application.Run(form);
         AppLog.Info("exit: main loop ended");
+    }
+
+    /// <summary>Asks the running instance to shut down gracefully.</summary>
+    private static void QuitRunningInstance()
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        foreach (var port in CapturePorts)
+        {
+            try
+            {
+                using var content = new StringContent("{}", Encoding.UTF8, "application/json");
+                var response = http.PostAsync($"http://127.0.0.1:{port}/quit", content)
+                    .GetAwaiter().GetResult();
+                if (response.IsSuccessStatusCode) break;
+            }
+            catch
+            {
+                // Try the next port.
+            }
+        }
+    }
+
+    /// <summary>Asks the running instance to show its window (best effort).</summary>
+    private static void WakeRunningInstance()
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        foreach (var port in CapturePorts)
+        {
+            try
+            {
+                http.GetAsync($"http://127.0.0.1:{port}/show").GetAwaiter().GetResult();
+                return;
+            }
+            catch
+            {
+                // Try the next port.
+            }
+        }
     }
 
     /// <summary>Sends links and .torrent files to the running instance.</summary>
