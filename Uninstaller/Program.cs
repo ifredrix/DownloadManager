@@ -1,0 +1,56 @@
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Windows.Forms;
+
+// Uninstall stub shipped as [INSTALLFOLDER]Uninstall.exe plus a Start Menu
+// shortcut, so "uninstall from Windows" works even for users who never open
+// Settings > Apps. It finds this product by its STABLE UpgradeCode and hands
+// off to msiexec with full UI (UAC appears for the per-machine product).
+// ProductCode is intentionally NOT hardcoded: WiX assigns a fresh one per
+// build (major upgrades); the UpgradeCode below mirrors installer/product.wxs
+// and must stay in sync with it.
+static class Uninstaller
+{
+    private const string UpgradeCode = "A7C2E9D4-5B31-4F8E-9C60-2D1E84F30B75";
+
+    [DllImport("msi.dll", CharSet = CharSet.Unicode)]
+    private static extern int MsiEnumRelatedProducts(
+        string strUpgradeCode, int dwReserved, int iProductIndex, StringBuilder strProductCode);
+
+    [STAThread]
+    private static int Main()
+    {
+        string? found = null;
+        var product = new StringBuilder(39);
+        // MSI takes the UpgradeCode WITH braces; without them every call
+        // fails with ERROR_INVALID_PARAMETER and nothing is ever found.
+        var upgradeBraced = "{" + UpgradeCode + "}";
+        for (var i = 0; i < 16; i++)
+        {
+            product.Clear();
+            if (MsiEnumRelatedProducts(upgradeBraced, 0, i, product) != 0) break;
+            if (product.Length == 0) break;
+            found = product.ToString();
+            break; // Major-upgrade regime: at most one installed instance.
+        }
+
+        if (found == null)
+        {
+            MessageBox.Show(
+                "ifredrix Download Manager is not installed (no product found for this installer).",
+                "ifredrix Download Manager",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return 1;
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "msiexec.exe",
+            Arguments = "/x " + found,
+            UseShellExecute = true,
+        });
+        return 0;
+    }
+}

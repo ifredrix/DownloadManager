@@ -30,8 +30,10 @@
   </ItemGroup>
 
   <!-- The WPF try-out shell lives in Wpf/ with its own project. -->
+  <!-- The Uninstall.exe stub is its own project too (separate entry point). -->
   <ItemGroup>
     <Compile Remove="Wpf\**" />
+    <Compile Remove="Uninstaller\**" />
     <Page Remove="Wpf\**" />
     <ApplicationDefinition Remove="Wpf\**" />
     <EmbeddedResource Remove="Wpf\**" />

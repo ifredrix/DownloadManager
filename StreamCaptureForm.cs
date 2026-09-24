@@ -253,7 +253,8 @@ public sealed class StreamCaptureForm : Form
         try
         {
             var tool = new StreamCapture();
-            var formats = await tool.ListFormatsAsync(url);
+            var formats = await tool.ListFormatsAsync(
+                url, CancellationToken.None, "", "", null, _manager.StreamProxyFor(url));
 
             foreach (var f in formats.OrderByDescending(f => f.Height).ThenByDescending(f => f.Fps))
             {
@@ -266,6 +267,13 @@ public sealed class StreamCaptureForm : Form
                 item.SubItems.Add(f.Height >= 4320 ? "8K" : (f.IsAudio ? "" : ""));
                 item.Tag = f;
                 _lvFormats.Items.Add(item);
+            }
+            // Single-format links (plain progressive files) select
+            // themselves so Download is clickable right away.
+            if (_lvFormats.Items.Count == 1)
+            {
+                _lvFormats.Items[0].Selected = true;
+                _lvFormats.FocusedItem = _lvFormats.Items[0];
             }
             _lblProgress.Text = $"{formats.Count} format(s) detected.";
         }
@@ -327,7 +335,9 @@ public sealed class StreamCaptureForm : Form
         try
         {
             var tool = new StreamCapture();
-            var savedPath = await tool.DownloadAsync(url, format.Id, _outputDirectory, progress, _cts.Token);
+            var savedPath = await tool.DownloadAsync(
+                url, format.Id, _outputDirectory, progress, _cts.Token,
+                0, "", "", null, _manager.StreamProxyFor(url));
             if (savedPath != null && File.Exists(savedPath))
             {
                 _progress.Value = 100;

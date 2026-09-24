@@ -1,6 +1,6 @@
 {
   "version": "0.1.0-beta",
   "url": "https://sourceforge.net/projects/SLUG-PLACEHOLDER/files/ifredrixDownloadManager-0.1.0-beta-x64.msi/download",
-  "sha256": "4768b5e622c0b83f2b815babad2a5e99dad9211acd70109aba6e40deffdc588b",
-  "notes": "ifredrix Download Manager 0.1.0-beta - Tor mode renamed to app built-in, MIT installer. URL is a placeholder until the SourceForge slug is registered."
+  "sha256": "9728d4e13ddff2efa59f31c873bad2905eb11cf598d83cfd8c6dcb2199388f0d",
+  "notes": "ifredrix Download Manager 0.1.0-beta - Uninstall.exe stub plus shortcut (ps1 scripts removed), stream dialog proxy plus single-row select, MIT installer. URL is a placeholder until the SourceForge slug is registered."
 }

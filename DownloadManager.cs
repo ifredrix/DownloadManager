@@ -151,6 +151,10 @@ public sealed class DownloadManager : IDisposable
         return $"socks5h://{TorProxy.Host}:{TorProxy.Port}";
     }
 
+    /// <summary>SOCKS proxy for out-of-band yt-dlp calls (stream dialog):
+    /// honors route-all, empty = direct.</summary>
+    public string StreamProxyFor(string url) => TorProxyFor(url, false);
+
     /// <summary>Per-category save folders (empty = main download path).</summary>
     public Dictionary<string, string> CategoryDirs { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 

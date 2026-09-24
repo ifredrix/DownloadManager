@@ -52,6 +52,15 @@
         <RegistryValue Root="HKLM" Key="Software\ifredrixDownloadManager"
                        Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
       </Component>
+      <Component Id="UninstallShortcut" Guid="B7D95274-80DA-4920-8F1C-81A3173B820A">
+        <Shortcut Id="UninstallShortcut"
+                  Name="Uninstall ifredrix Download Manager"
+                  Description="Uninstall ifredrix Download Manager"
+                  Target="[INSTALLFOLDER]Uninstall.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKLM" Key="Software\ifredrixDownloadManager"
+                       Name="UninstallShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
     </StandardDirectory>
 
     <StandardDirectory Id="DesktopFolder">
@@ -71,6 +80,7 @@
       <!-- All published files, harvested recursively from the bind path "pub". -->
       <Files Include="!(bindpath.pub)\**" />
       <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="UninstallShortcut" />
       <ComponentRef Id="DesktopShortcut" />
     </Feature>
   </Package>
