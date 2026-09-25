@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Fixture probe Lapisan 1</title>
+<meta property="og:video" content="https://cdn.contoh.test/v/og-video.mp4">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"VideoObject",
+ "contentUrl":"https://cdn.contoh.test/v/ld-video.m4v",
+ "embedUrl":"https://player.contoh.test/embed/abc123"}
+</script>
+</head>
+<body>
+<video controls poster="poster.jpg">
+  <source src="https://cdn.contoh.test/v/tag-video.webm" type="video/webm">
+  <source src="/relatif/tag-video.mp4" type="video/mp4">
+</video>
+<iframe src="https://player.contoh.test/embed/abc123"></iframe>
+<script>
+var playerConfig = {"src":"https://stream.contoh.test/hls/master.m3u8?token=abc",
+  "fallback":"//cdn.contoh.test/v/js-video.mp4"};
+</script>
+</body>
+</html>
