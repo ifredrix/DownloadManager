@@ -2,9 +2,12 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <UseWindowsForms>true</UseWindowsForms>
+    <!-- net48: inbox di Win10/11, stub uninstall tetap jalan di mesin
+         tanpa .NET modern apa pun (tepat untuk produk self-contained). -->
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>Uninstall</AssemblyName>
     <Description>Uninstall stub for ifredrix Download Manager (finds the MSI product and hands off to msiexec).</Description>

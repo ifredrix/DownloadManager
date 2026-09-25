@@ -23,20 +23,7 @@ static class Uninstaller
     [STAThread]
     private static int Main()
     {
-        string? found = null;
-        var product = new StringBuilder(39);
-        // MSI takes the UpgradeCode WITH braces; without them every call
-        // fails with ERROR_INVALID_PARAMETER and nothing is ever found.
-        var upgradeBraced = "{" + UpgradeCode + "}";
-        for (var i = 0; i < 16; i++)
-        {
-            product.Clear();
-            if (MsiEnumRelatedProducts(upgradeBraced, 0, i, product) != 0) break;
-            if (product.Length == 0) break;
-            found = product.ToString();
-            break; // Major-upgrade regime: at most one installed instance.
-        }
-
+        var found = FindProduct();
         if (found == null)
         {
             MessageBox.Show(
@@ -71,5 +58,24 @@ static class Uninstaller
             UseShellExecute = true,
         });
         return 0;
+    }
+
+    /// <summary>First installed product for our UpgradeCode, or null.</summary>
+    private static string? FindProduct()
+    {
+        var product = new StringBuilder(39);
+        // MSI takes the UpgradeCode WITH braces; without them every call
+        // fails with ERROR_INVALID_PARAMETER and nothing is ever found.
+        var upgradeBraced = "{" + UpgradeCode + "}";
+        var index = 0;
+        while (true)
+        {
+            if (index >= 16) return null;
+            product.Clear();
+            if (MsiEnumRelatedProducts(upgradeBraced, 0, index, product) != 0) return null;
+            if (product.Length == 0) return null;
+            // Major-upgrade regime: at most one installed instance.
+            return product.ToString();
+        }
     }
 }

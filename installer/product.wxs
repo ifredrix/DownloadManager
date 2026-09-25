@@ -26,6 +26,13 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of ifredrix Download Manager is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
+    <!-- Dialog kelayakan: diblokir dengan pesan jelas bila perangkat tak
+         didukung (gagal di sini, bukan aplikasi crash setelah pasang). -->
+    <Launch Condition="VersionNT64"
+            Message="ifredrix Download Manager membutuhkan Windows 64-bit (x64)." />
+    <Launch Condition="(VersionNT &gt; 603) OR (VersionNT = 603 AND WindowsBuild &gt;= 14393)"
+            Message="ifredrix Download Manager membutuhkan Windows 10 versi 1607 (build 14393) atau lebih baru." />
+
     <!-- Installer dialog chain (per-machine => UAC prompt on install). -->
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
     <UIRef Id="WixUI_InstallDir_X64" />
