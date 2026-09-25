@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
@@ -43,6 +44,24 @@ static class Uninstaller
                 "ifredrix Download Manager",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             return 1;
+        }
+
+        // The Desktop icon is app-owned (first-run prompt), not an MSI
+        // component, so remove it here; msiexec handles the rest.
+        // Best effort only: a missing file or denied folder never blocks
+        // the uninstall (msiexec still runs below).
+        foreach (var dir in new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory)
+        })
+        {
+            try
+            {
+                var lnk = Path.Combine(dir, "ifredrix Download Manager.lnk");
+                if (!string.IsNullOrWhiteSpace(dir) && File.Exists(lnk)) File.Delete(lnk);
+            }
+            catch { }
         }
 
         Process.Start(new ProcessStartInfo

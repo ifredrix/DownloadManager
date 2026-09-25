@@ -71,6 +71,9 @@ public sealed class AppSettings
     /// <summary>Show the New Download dialog for URL-box adds.</summary>
     public bool ConfirmNewDownload { get; set; } = true;
 
+    /// <summary>Desktop-icon question already answered (asked once).</summary>
+    public bool DesktopIconAsked { get; set; }
+
     /// <summary>UI language: "id" or "en".</summary>
     public string Language { get; set; } = "id";
 

@@ -1,6 +1,6 @@
 {
   "version": "0.1.0-beta",
   "url": "https://github.com/ifredrix/DownloadManager/releases/download/v0.1.0-beta/ifredrixDownloadManager-0.1.0-beta-x64.msi",
-  "sha256": "78bf2ac4fa2d1e879dc35ca8543badde5687ecd8243881f3a6257807ac565daf",
+  "sha256": "9ee6fc7ec3469b0b7a0cdaccd89fa71df93aea48006c8cc3283bafebd4370052",
   "notes": "ifredrix Download Manager 0.1.0-beta - refuse fake media files with clear error instead of fake Completed, MIT installer Indonesia. Released via GitHub Releases."
 }

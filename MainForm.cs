@@ -55,6 +55,7 @@ public partial class MainForm : Form
     private ToolStripMenuItem? _menuCopyUrl;
     private ToolStripMenuItem? _menuTorRoute;
     private ToolStripMenuItem? _menuAssoc;
+    private ToolStripMenuItem? _menuDesktopIcon;
     private ToolStripMenuItem? _menuSkinLight;
     private ToolStripMenuItem? _menuSkinDark;
     private ToolStripMenuItem? _menuLangId;
@@ -261,11 +262,15 @@ public partial class MainForm : Form
         _menuAssoc = M("menu.assoc", (_, _) => ToggleAssoc());
         _menuAssoc.CheckOnClick = true;
         tools.DropDownItems.Add(_menuAssoc);
+        _menuDesktopIcon = M("menu.desktopIcon", (_, _) => ToggleDesktopIcon());
+        _menuDesktopIcon.CheckOnClick = true;
+        tools.DropDownItems.Add(_menuDesktopIcon);
         tools.DropDownItems.Add(new ToolStripSeparator());
         tools.DropDownItems.Add(M("menu.settings", (_, _) => btnSettings_Click(this, EventArgs.Empty)));
         tools.DropDownOpening += (_, _) =>
         {
             if (_menuAssoc != null) _menuAssoc.Checked = FileAssoc.IsAssociated();
+            if (_menuDesktopIcon != null) _menuDesktopIcon.Checked = DesktopShortcut.Exists();
         };
 
         var help = new ToolStripMenuItem(T("menu.help"));
@@ -422,6 +427,34 @@ public partial class MainForm : Form
             SetStatus(string.Format(T("status.failed"), ex.Message));
         }
         if (_menuAssoc != null) _menuAssoc.Checked = FileAssoc.IsAssociated();
+    }
+
+    private void ToggleDesktopIcon()
+    {
+        var created = false;
+        if (DesktopShortcut.Exists()) DesktopShortcut.Delete();
+        else created = DesktopShortcut.Create();
+        _settings.DesktopIconAsked = true;
+        _settings.Save();
+        SetStatus(T(created ? "status.desktopOn" : "status.desktopOff"));
+        if (_menuDesktopIcon != null) _menuDesktopIcon.Checked = DesktopShortcut.Exists();
+    }
+
+    /// <summary>Asks once whether to create a Desktop icon (skipped for
+    /// tray-autostart and when an icon already exists, e.g. older MSI).</summary>
+    private void OfferDesktopIconOnce()
+    {
+        if (StartMinimized || _settings.DesktopIconAsked) return;
+        _settings.DesktopIconAsked = true;
+        _settings.Save();
+        if (DesktopShortcut.Exists()) return;
+        var answer = MessageBox.Show(this, T("dlg.desktopAsk"), T("dlg.desktopTitle"),
+            MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        if (answer == DialogResult.Yes)
+        {
+            var ok = DesktopShortcut.Create();
+            SetStatus(ok ? T("status.desktopOn") : string.Format(T("status.failed"), "?"));
+        }
     }
 
     private void OpenSiteLogins()
@@ -1018,6 +1051,8 @@ public partial class MainForm : Form
             WindowState = FormWindowState.Minimized;
             ShowInTaskbar = false;
         }
+
+        OfferDesktopIconOnce();
 
     }
 

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Per-machine MSI (UAC/admin): files -> %ProgramFiles%\ifredrixDownloadManager,
-  Start Menu + Desktop shortcuts, Add/Remove Programs entry.
+  Start Menu shortcut, Add/Remove Programs entry. No Desktop icon component:
+  the app offers one once on first run (and Uninstall.exe removes it).
 
   Dialog chain via WixUI_InstallDir_X64: Welcome -> License (LICENSE, MIT) ->
   InstallDir -> VerifyReady. The RTF license text overrides the wixlib default
@@ -68,25 +69,14 @@
       </Component>
     </StandardDirectory>
 
-    <StandardDirectory Id="DesktopFolder">
-      <Component Id="DesktopShortcut" Guid="6E0A49C7-1D38-4B6F-8A21-C57B9E0F3B12">
-        <Shortcut Id="DesktopIcon"
-                  Name="ifredrix Download Manager"
-                  Description="ifredrix Download Manager"
-                  Target="[INSTALLFOLDER]ifredrixDownloadManager.exe"
-                  WorkingDirectory="INSTALLFOLDER"
-                  Icon="AppIcon.ico" />
-        <RegistryValue Root="HKLM" Key="Software\ifredrixDownloadManager"
-                       Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
-      </Component>
-    </StandardDirectory>
-
+    <!-- No Desktop icon component: the app asks once on first run and owns
+         the .lnk itself (DesktopShortcut.cs); Uninstall.exe cleans it up.
+         Keeping it out of the MSI also means no installer option dialog. -->
     <Feature Id="Main" Title="ifredrix Download Manager" Level="1">
       <!-- All published files, harvested recursively from the bind path "pub". -->
       <Files Include="!(bindpath.pub)\**" />
       <ComponentRef Id="StartMenuShortcut" />
       <ComponentRef Id="UninstallShortcut" />
-      <ComponentRef Id="DesktopShortcut" />
     </Feature>
   </Package>
 </Wix>

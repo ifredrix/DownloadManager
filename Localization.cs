@@ -68,6 +68,11 @@ public static class Localization
         ["menu.catFolders"] = "Category &Folders...",
         ["menu.exclusions"] = "URL E&xclusions...",
         ["menu.assoc"] = "Associate .torrent files",
+        ["menu.desktopIcon"] = "Desktop &icon",
+        ["dlg.desktopTitle"] = "Desktop icon",
+        ["dlg.desktopAsk"] = "Create a Desktop icon for ifredrix Download Manager?",
+        ["status.desktopOn"] = "Desktop icon created.",
+        ["status.desktopOff"] = "Desktop icon removed.",
         ["menu.checksum"] = "Verify checks&um...",
         // Checksum
         ["hash.title"] = "Verify checksum",
@@ -495,6 +500,11 @@ public static class Localization
         ["menu.catFolders"] = "&Folder Kategori...",
         ["menu.exclusions"] = "Pengecualian &URL...",
         ["menu.assoc"] = "Asosiasikan berkas .torrent",
+        ["menu.desktopIcon"] = "Ikon &Desktop",
+        ["dlg.desktopTitle"] = "Ikon Desktop",
+        ["dlg.desktopAsk"] = "Buat ikon Desktop untuk ifredrix Download Manager?",
+        ["status.desktopOn"] = "Ikon Desktop dibuat.",
+        ["status.desktopOff"] = "Ikon Desktop dihapus.",
         ["menu.checksum"] = "Verifikasi check&sum...",
         // Checksum
         ["hash.title"] = "Verifikasi checksum",
