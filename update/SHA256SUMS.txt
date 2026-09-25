@@ -1,1 +1,1 @@
-cbfe71edf97f36d721bec8a46ae40f7f5bed932dc6d6b09343bb189aa0b24c28  ifredrixDownloadManager-0.1.0-beta-x64.msi
+90e3296fc0da85fafcba0562adcb009032443aa9b905e95c84527a20dcc2c1ac  ifredrixDownloadManager-0.1.0-beta-x64.msi

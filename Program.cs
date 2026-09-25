@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Text;
+using System.Windows.Forms;
 
 namespace IfredrixDownloadManager;
 
@@ -66,11 +67,39 @@ static class Program
         // see https://aka.ms/applicationconfiguration.
         ApplicationConfiguration.Initialize();
         AppLog.Info($"start v{Application.ProductVersion} pid={Environment.ProcessId} targets={targets.Count}");
+        if (!IsSupportedOs(out var osDetail))
+        {
+            AppLog.Error("unsupported OS: " + osDetail);
+            MessageBox.Show(
+                "ifredrix Download Manager membutuhkan Windows 10 versi 1607 (build 14393) atau lebih baru, 64-bit.\n" +
+                "Perangkat ini: " + osDetail + ".\n\n" +
+                "ifredrix Download Manager requires Windows 10 version 1607 (build 14393) or newer, 64-bit.\n" +
+                "This device: " + osDetail + ".",
+                "ifredrix Download Manager",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
         var form = new MainForm();
         form.StartMinimized = startMinimized;
         form.StartupUrls.AddRange(targets);
         Application.Run(form);
         AppLog.Info("exit: main loop ended");
+    }
+
+    /// <summary>
+    /// Gerbang kompatibilitas OS pengganti LaunchCondition MSI: memakai
+    /// Environment.OSVersion (RtlGetVersion = angka asli, deterministik di
+    /// semua mesin), bukan properti MSI yang terbukti menyesatkan.
+    /// .NET 8 SCD butuh Windows 10 build 14393+ x64.
+    /// </summary>
+    private static bool IsSupportedOs(out string detail)
+    {
+        var v = Environment.OSVersion.Version;
+        detail = "Windows " + v.Major + "." + v.Minor + " build " + v.Build +
+            (Environment.Is64BitOperatingSystem ? " x64" : " x86");
+        if (!Environment.Is64BitOperatingSystem) return false;
+        if (v.Major < 10) return false;
+        return v.Major > 10 || v.Build >= 14393;
     }
 
     /// <summary>Asks the running instance to shut down gracefully.</summary>
