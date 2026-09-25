@@ -463,6 +463,45 @@ public sealed class StreamCapture
         string url, CancellationToken ct = default, string referer = "",
         string ua = "", List<CookieEntry>? cookies = null, string proxy = "")
     {
+        try
+        {
+            return await ListFormatsCoreAsync(url, ct, referer, ua, cookies, proxy)
+                .ConfigureAwait(false);
+        }
+        catch (Exception first) when (cookies != null && cookies.Count > 0)
+        {
+            // Cookie sesi browser bisa basi di tengah jalan (YouTube lalu
+            // menggagalkan SEMUA player client, mis. "The page needs to be
+            // reloaded", sementara panggilan tanpa cookie sukses): coba sekali
+            // lagi tanpa cookie sebelum menyerah.
+            AppLog.Info("ListFormatsAsync(" + url + ") gagal dengan cookie, " +
+                "coba tanpa cookie: " + FirstLine(first.Message));
+            try
+            {
+                return await ListFormatsCoreAsync(url, ct, referer, ua, null, proxy)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception second)
+            {
+                AppLog.Error("ListFormatsAsync(" + url + ") tanpa cookie juga gagal: " +
+                    FirstLine(second.Message));
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo
+                    .Capture(first).Throw();
+                throw;
+            }
+        }
+    }
+
+    private static string FirstLine(string message)
+    {
+        var line = (message ?? string.Empty).Split('\n')[0].Trim();
+        return line.Length > 160 ? line[..160] + "..." : line;
+    }
+
+    private async Task<List<StreamFormat>> ListFormatsCoreAsync(
+        string url, CancellationToken ct = default, string referer = "",
+        string ua = "", List<CookieEntry>? cookies = null, string proxy = "")
+    {
         var tool = ResolveTool();
         if (tool == null) throw new FileNotFoundException(
             "yt-dlp is not available. Use Get yt-dlp in this dialog to fetch it.");
@@ -703,7 +742,56 @@ public sealed class StreamCapture
     }
 
     /// <summary>Downloads the chosen format. Returns the path of the produced file.</summary>
-    public async Task<string?> DownloadAsync(
+    public Task<string?> DownloadAsync(
+        string url, string formatId, string destinationDirectory,
+        IProgress<StreamProgress>? progress, CancellationToken ct, long speedLimitBps = 0,
+        string referer = "", string ua = "", List<CookieEntry>? cookies = null,
+        string proxy = "")
+    {
+        // Same stale-cookie disease as listing (panel passes the browser
+        // session): one cookie-less retry before failing the download.
+        // Fragment files are reused via --continue, so the retry resumes
+        // instead of restarting.
+        return DownloadWithCookieFallbackAsync(url, formatId, destinationDirectory,
+            progress, ct, speedLimitBps, referer, ua, cookies, proxy);
+    }
+
+    private async Task<string?> DownloadWithCookieFallbackAsync(
+        string url, string formatId, string destinationDirectory,
+        IProgress<StreamProgress>? progress, CancellationToken ct, long speedLimitBps,
+        string referer, string ua, List<CookieEntry>? cookies,
+        string proxy)
+    {
+        try
+        {
+            return await DownloadCoreAsync(url, formatId, destinationDirectory,
+                    progress, ct, speedLimitBps, referer, ua, cookies, proxy)
+                .ConfigureAwait(false);
+        }
+        catch (InvalidOperationException first)
+            when (cookies != null && cookies.Count > 0 &&
+                  first.Message.Contains("yt-dlp failed", StringComparison.Ordinal))
+        {
+            AppLog.Info("DownloadAsync(" + url + ") gagal dengan cookie, " +
+                "coba tanpa cookie: " + FirstLine(first.Message));
+            try
+            {
+                return await DownloadCoreAsync(url, formatId, destinationDirectory,
+                        progress, ct, speedLimitBps, referer, ua, null, proxy)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception second)
+            {
+                AppLog.Error("DownloadAsync(" + url + ") tanpa cookie juga gagal: " +
+                    FirstLine(second.Message));
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo
+                    .Capture(first).Throw();
+                throw;
+            }
+        }
+    }
+
+    private async Task<string?> DownloadCoreAsync(
         string url, string formatId, string destinationDirectory,
         IProgress<StreamProgress>? progress, CancellationToken ct, long speedLimitBps = 0,
         string referer = "", string ua = "", List<CookieEntry>? cookies = null,
