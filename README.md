@@ -27,15 +27,35 @@ Inggris.
 
 ## Instalasi
 
-Unduh dari [Releases](https://github.com/ifredrix/DownloadManager/releases):
+- **Dari source** (satu-satunya cara saat ini — belum ada rilis biner):
+  `dotnet build ifredrixDownloadManager.sln -c Release` (syarat: Windows +
+  .NET 8 SDK), lalu jalankan hasilnya di `bin\Release\net8.0-windows\`.
+  Paket MSI per-machine (`installer/product.wxs`, butuh WiX v7 + persetujuan
+  admin/UAC) dan arsip portabel dibuat dari hasil build tersebut.
+- Bila kelak mengunduh rilis jadi, verifikasi dengan `SHA256SUMS.txt`
+  pada rilis yang sama.
 
-- **`.msi`** (disarankan) — pemasang Windows per-user, tanpa admin; pasang lalu
-  jalankan dari Start Menu / desktop.
-- **`.zip`** — ekstrak, lalu jalankan `ifredrixDownloadManager.exe`
-  (self-contained, tanpa perlu .NET terpasang).
-- `installer/Install.ps1` tetap tersedia sebagai alternatif baris perintah.
+## Cara penggunaan
 
-Verifikasi unduhan dengan `SHA256SUMS.txt` pada rilis yang sama.
+1. **Unduh manual**: tombol New Download (tautan `http(s)/ftp`, `magnet:`,
+   atau file `.torrent`), atau tempel URL — clipboard berisi tautan
+   otomatis ditawarkan. Dialog menampilkan nama, ukuran, dan dukungan
+   resume sebelum masuk antrean.
+2. **Tangkap dari browser**: muat ekstensi (`BrowserExtension/<nama-browser>`)
+   sebagai *unpacked extension* (aturan keamanan browser: tak bisa
+   auto-install), pastikan aplikasi berjalan, lalu:
+   - klik tombol "⇩ ifredrix" pada video → panel kualitas (resolusi,
+     perkiraan ukuran, audio saja) → klik satu baris, berkas masuk
+     antrean dan jendela progres terbuka;
+   - atau biarkan autodownload browser diambil alih aplikasi
+     (menu konteks "Send to ifredrix" juga bisa).
+3. **Kelola antrean**: Jeda/Lanjutkan/Batal/Hapus per baris, klik-kolom
+   untuk jendela progres, Refresh untuk memperbarui alamat yang basi,
+   toggle Tor per unduhan, batas kecepatan global maupun per unduhan.
+4. **Saat pertama butuh**: yt-dlp, ffmpeg, dan Tor bundle diunduh otomatis
+   sekali dari sumber resmi (lihat bawah) — tanpa instalasi terpisah.
+5. **Lainnya**: perencana jadwal + auto-shutdown, asosiasi `.torrent`,
+   checksum SHA256/SHA1/MD5, ekspor/impor antrean, pola pengecualian URL.
 
 ## Build
 
@@ -61,6 +81,22 @@ field SHA256. Paket yang diunduh diverifikasi SHA256-nya sebelum dijalankan.
 ## Lisensi
 
 MIT License — Copyright (c) 2026 Frederikus Hendra Tingang. Lihat [LICENSE](LICENSE).
+
+## Komponen pihak ketiga
+
+**Proyek ini bukan fork dari proyek mana pun.** Seluruh kode di repo ini
+ditulis untuk aplikasi ini; komponen eksternal dipakai apa adanya dari
+rilis/paket resmi (bukan dari fork), sebagian diunduh otomatis saat
+pertama dibutuhkan:
+
+| Komponen | Sumber | Lisensi | Dipakai untuk |
+|---|---|---|---|
+| yt-dlp | `github.com/yt-dlp/yt-dlp` (rilis exe resmi) | Unlicense | daftar kualitas + unduh stream |
+| ffmpeg | `github.com/BtbN/FFmpeg-Builds` (cadangan: gyan.dev) | GPL | gabung video+audio, remux |
+| Tor expert bundle | `torproject.org` | lisensi Tor/BSD | rute Tor terkelola |
+| MonoTorrent 3.0.2 | NuGet (`mono/monotorrent` di GitHub) | MIT | unduhan BitTorrent |
+| WiX Toolset v7 | `github.com/wiX-Toolset/wix` | MS-RL | membangun MSI saja (build-time) |
+| .NET 8 SDK | Microsoft | MIT | runtime + build |
 
 ## Catatan
 
