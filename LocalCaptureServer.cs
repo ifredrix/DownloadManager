@@ -423,7 +423,8 @@ public sealed class LocalCaptureServer : IDisposable
             if (viaYtDlp)
             {
                 await _manager.AddStreamAsync(
-                        payload.Url, wantedFormat, payload.Referer, payload.Ua, payload.Cookies)
+                        payload.Url, wantedFormat, payload.Referer, payload.Ua, payload.Cookies,
+                        Math.Max(0, payload.SizeBytes))
                     .ConfigureAwait(false);
             }
             else
@@ -495,6 +496,12 @@ public sealed class LocalCaptureServer : IDisposable
         // (e.g. "399+140"); empty = automatic best.
         [JsonPropertyName("format")]
         public string Format { get; set; } = string.Empty;
+
+        // Expected total bytes for that format, as shown in the panel
+        // (summed video+audio estimate from yt-dlp -F). 0 = unknown:
+        // the grid keeps showing "--" exactly as before.
+        [JsonPropertyName("sizeBytes")]
+        public long SizeBytes { get; set; }
 
         // Page/iframe URL the media was playing on; forwarded as yt-dlp
         // --referer / HTTP Referer so referer-gated hosts accept the request.

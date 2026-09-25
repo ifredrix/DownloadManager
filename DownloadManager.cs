@@ -409,7 +409,7 @@ public sealed class DownloadManager : IDisposable
     /// </summary>
     public async Task<DownloadTask> AddStreamAsync(
         string url, string formatId = "", string referer = "",
-        string ua = "", List<CookieEntry>? cookies = null)
+        string ua = "", List<CookieEntry>? cookies = null, long expectedSize = 0)
     {
         if (string.IsNullOrWhiteSpace(url))
         {
@@ -447,6 +447,7 @@ public sealed class DownloadManager : IDisposable
             SavePath = UniqueDirectory(Path.Combine(StreamsDirectory, baseName)),
             Category = "Video",
             FormatId = (formatId ?? string.Empty).Trim(),
+            ExpectedSize = Math.Max(0, expectedSize),
             Status = DownloadStatus.Pending
         };
 
@@ -630,6 +631,7 @@ public sealed class DownloadManager : IDisposable
                     FileName = string.IsNullOrWhiteSpace(e.FileName) ? DeriveFileName(e.Url) : e.FileName,
                     SavePath = savePath,
                     FileSize = Math.Max(0, e.FileSize),
+                    ExpectedSize = Math.Max(0, e.ExpectedSize),
                     Status = status,
                     Type = e.Type,
                     Category = string.IsNullOrWhiteSpace(e.Category) ? "Other" : e.Category,
@@ -1284,6 +1286,7 @@ public sealed class DownloadManager : IDisposable
                     SavePath = t.SavePath,
                     FileSize = t.FileSize,
                     DownloadedBytes = t.DownloadedBytes,
+                    ExpectedSize = t.ExpectedSize,
                     Status = t.Status switch
                     {
                         DownloadStatus.Downloading or DownloadStatus.Queued or DownloadStatus.Pending
@@ -1329,6 +1332,7 @@ public sealed class DownloadManager : IDisposable
                     FileName = string.IsNullOrWhiteSpace(e.FileName) ? DeriveFileName(e.Url) : e.FileName,
                     SavePath = e.SavePath,
                     FileSize = Math.Max(0, e.FileSize),
+                    ExpectedSize = Math.Max(0, e.ExpectedSize),
                     Status = e.Status,
                     Type = e.Type,
                     Category = string.IsNullOrWhiteSpace(e.Category) ? "Other" : e.Category,
@@ -1367,6 +1371,7 @@ public sealed class DownloadManager : IDisposable
         public string SavePath { get; set; } = string.Empty;
         public long FileSize { get; set; }
         public long DownloadedBytes { get; set; }
+        public long ExpectedSize { get; set; }
         public DownloadStatus Status { get; set; }
         public DownloadType Type { get; set; }
         public string Category { get; set; } = string.Empty;

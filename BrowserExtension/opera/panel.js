@@ -253,9 +253,9 @@
         body.appendChild(el("div", "ifre-section", label));
     }
 
-    function sendChoice(url, format, row) {
+    function sendChoice(url, format, sizeBytes, row) {
         row.classList.add("ifre-busy");
-        sendMessage({ type: "ifre-capture", url: url, format: format || "", referer: location.href, ui: true })
+        sendMessage({ type: "ifre-capture", url: url, format: format || "", sizeBytes: sizeBytes || 0, referer: location.href, ui: true })
             .then((resp) => {
                 if (resp && resp.ok) {
                     row.classList.add("ifre-ok");
@@ -292,7 +292,7 @@
             sub: "",
             size: "",
             format: "",
-            onClick: (row) => sendChoice(url, "", row)
+            onClick: (row) => sendChoice(url, "", 0, row)
         }));
 
         const videos = list.filter((f) => f && f.kind === "video");
@@ -306,7 +306,7 @@
                     sub: f.ext || "",
                     size: fmtSize(f.sizeBytes),
                     format: f.id,
-                    onClick: (row) => sendChoice(url, f.id, row)
+                    onClick: (row) => sendChoice(url, f.id, f.sizeBytes || 0, row)
                 }));
             }
         }
@@ -319,7 +319,7 @@
                     sub: T.audioOnly + (f.id ? " \u00b7 " + f.id : ""),
                     size: fmtSize(f.sizeBytes),
                     format: f.id,
-                    onClick: (row) => sendChoice(url, f.id, row)
+                    onClick: (row) => sendChoice(url, f.id, f.sizeBytes || 0, row)
                 }));
             }
         }

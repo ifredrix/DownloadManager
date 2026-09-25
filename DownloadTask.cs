@@ -252,6 +252,26 @@ public class DownloadTask : INotifyPropertyChanged
 
     private long _speedLimitBps;
 
+    /// <summary>
+    /// Perkiraan ukuran stream (dari daftar kualitas yt-dlp -F di panel
+    /// browser) dalam byte. Stream memakai FileSize=100 sebagai placeholder
+    /// persen 0-100 selama berjalan, jadi angka panel disimpan di sini agar
+    /// kolom ukuran tidak lagi "--" padahal panel sudah tahu ukurannya.
+    /// 0 = tak diketahui (perilaku lama). Stream tasks only.
+    /// </summary>
+    public long ExpectedSize
+    {
+        get => System.Threading.Interlocked.Read(ref _expectedSize);
+        set
+        {
+            System.Threading.Interlocked.Exchange(ref _expectedSize, Math.Max(0, value));
+            OnPropertyChanged(nameof(ExpectedSize));
+            OnPropertyChanged(nameof(FormattedExpectedSize));
+            OnPropertyChanged(nameof(SizeText));
+        }
+    }
+    private long _expectedSize;
+
     /// <summary>Per-download cap in bytes/s. 0 means "use the global limit".</summary>
     public long SpeedLimitBps
     {
@@ -296,6 +316,7 @@ public class DownloadTask : INotifyPropertyChanged
     public string FormattedTimeRemaining => FormatTime(TimeRemaining);
     public string FormattedCreatedAt => CreatedAt.ToString("yyyy-MM-dd HH:mm:ss");
     public string FormattedFileSize => FormatBytes(FileSize);
+    public string FormattedExpectedSize => FormatBytes(ExpectedSize);
     public string FormattedDownloadedBytes => FormatBytes(DownloadedBytes);
 
     /// <summary>True while a stream task still reports 0-100% progress on the
@@ -304,9 +325,10 @@ public class DownloadTask : INotifyPropertyChanged
     public bool IsPercentProgress =>
         Type == DownloadType.Stream && FileSize <= 100 && Status != DownloadStatus.Completed;
 
-    /// <summary>Stream tasks map 0-100% onto FileSize=100: hide the fake size.</summary>
+    /// <summary>Stream tasks map 0-100% onto FileSize=100: hide the fake size,
+    /// but show the panel's estimate (ExpectedSize) when we have one.</summary>
     public string SizeText => Type == DownloadType.Stream && Status != DownloadStatus.Completed
-        ? "--"
+        ? (ExpectedSize > 0 ? FormattedExpectedSize : "--")
         : FileSize > 0 ? FormattedFileSize : "--";
 
     private string FormatSpeed(double bytesPerSecond)
