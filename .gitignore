@@ -11,3 +11,6 @@ installer/*.wixpdb
 .wix/
 out/
 pub/
+__pycache__/
+*.pyc
+*.pyo
